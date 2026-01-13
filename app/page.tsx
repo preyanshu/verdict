@@ -52,10 +52,20 @@ const Navbar = () => {
 
   return (
     <motion.nav
-      initial={{ y: -100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.8, ease: "easeOut" }}
-      className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 md:px-8 py-4 md:py-5 mx-auto w-full z-[100] transition-all duration-300 ${isOpen ? 'bg-black/90 backdrop-blur-2xl border-b border-white/10' : 'bg-black/50 backdrop-blur-xl border-b border-white/5 lg:bg-transparent lg:backdrop-blur-none lg:border-none'}`}
+      initial={{ y: -20, opacity: 0 }}
+      animate={{
+        y: 0,
+        opacity: 1,
+        backgroundColor: isOpen ? "rgba(0, 0, 0, 0.9)" : "rgba(0, 0, 0, 0)",
+        backdropFilter: isOpen ? "blur(24px)" : "blur(0px)",
+      }}
+      transition={{
+        y: { duration: 0.5, ease: "easeOut" },
+        opacity: { duration: 0.5 },
+        backgroundColor: { duration: 0.3 },
+        backdropFilter: { duration: 0.3 }
+      }}
+      className={`fixed top-0 left-0 right-0 flex items-center justify-between px-4 md:px-8 py-4 md:py-5 mx-auto w-full z-[100] ${!isOpen ? 'lg:bg-transparent lg:backdrop-blur-none lg:border-none border-b border-white/5 bg-black/50 backdrop-blur-xl' : 'border-b border-white/10'}`}
     >
       <div className="max-w-7xl mx-auto w-full flex items-center justify-between relative z-[110]">
         <Logo />
