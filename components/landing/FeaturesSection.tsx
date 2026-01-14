@@ -17,7 +17,7 @@ export const FeaturesSection = () => (
             <div className="max-w-3xl">
                 <span className="text-primary text-sm font-medium mb-4 block tracking-wider uppercase">WHY VERDICT?</span>
                 <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight text-white">
-                    Redefining Markets: Scaling <br /> Futarchy with RWA Agents
+                    Redefining Markets: Scaling <br className="hidden md:block" /> Futarchy with RWA Agents
                 </h2>
             </div>
             <div className="lg:mb-4 w-full lg:w-auto">
