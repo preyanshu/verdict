@@ -203,6 +203,19 @@ export const Navbar = ({ transparent = true }: NavbarProps) => {
                                                 </div>
                                             </div>
 
+                                            {/* Faucet Section */}
+                                            <div className="pt-2">
+                                                <button
+                                                    onClick={() => {
+                                                        // Demo logic or just close for now
+                                                        console.log("Claimed 100 vUSD");
+                                                    }}
+                                                    className="w-full py-3 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                                                >
+                                                    Get Demo vUSD (100)
+                                                </button>
+                                            </div>
+
                                             {/* Action Section */}
                                             <button
                                                 onClick={() => logout()}
@@ -413,6 +426,18 @@ export const Navbar = ({ transparent = true }: NavbarProps) => {
                                             </button>
                                         </div>
                                     </div>
+                                </div>
+
+                                {/* Faucet Section */}
+                                <div>
+                                    <button
+                                        onClick={() => {
+                                            console.log("Claimed 100 vUSD");
+                                        }}
+                                        className="w-full py-4 rounded-2xl bg-emerald-500 text-black text-[11px] font-black uppercase tracking-[0.25em] hover:bg-emerald-400 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.2)] active:scale-95"
+                                    >
+                                        Get Demo vUSD (100)
+                                    </button>
                                 </div>
 
                                 {/* Terminate Session */}
