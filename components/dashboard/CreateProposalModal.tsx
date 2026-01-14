@@ -2,327 +2,445 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Search, Brain, Calculator, Database, ChevronRight, Check, Info } from 'lucide-react';
+import { X, ArrowLeft, ArrowRight, Loader2, Plus, Check, Info, Brain } from 'lucide-react';
 import { TRUSTED_DATA_SOURCES, DataSource } from '@/lib/data-sources';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface CreateProposalModalProps {
     isOpen: boolean;
     onClose: () => void;
+    onLaunchSuccess?: () => void;
     activeAgentsCount: number;
     currentProposalsCount: number;
 }
 
-export const CreateProposalModal = ({ isOpen, onClose, activeAgentsCount, currentProposalsCount }: CreateProposalModalProps) => {
+export const CreateProposalModal = ({ isOpen, onClose, onLaunchSuccess, activeAgentsCount, currentProposalsCount }: CreateProposalModalProps) => {
+    const [view, setView] = useState<'summary' | 'designer'>('summary');
     const [step, setStep] = useState(1);
+
+    // Proposal States
     const [name, setName] = useState('');
-    const [equation, setEquation] = useState('');
     const [selectedSources, setSelectedSources] = useState<DataSource[]>([]);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [duration, setDuration] = useState('24h');
-    const [customDays, setCustomDays] = useState('1');
 
-    const durationOptions = [
-        { label: '24 Hours', value: '24h' },
-        { label: '3 Days', value: '3d' },
-        { label: '7 Days', value: '7d' },
-        { label: 'Custom', value: 'custom' }
-    ];
+    // Condition Builder State
+    interface Condition {
+        source: string;
+        operator: string;
+        value: string;
+        connector: 'AND' | 'OR' | null;
+    }
+    const [conditions, setConditions] = useState<Condition[]>([{ source: '', operator: '>', value: '', connector: null }]);
 
-    const getResolutionTime = () => {
-        const now = new Date();
-        if (duration === 'custom') {
-            const days = Math.min(Math.max(parseInt(customDays) || 1, 1), 30);
-            now.setDate(now.getDate() + days);
-        } else {
-            const value = parseInt(duration);
-            const unit = duration.slice(-1);
-            if (unit === 'h') now.setHours(now.getHours() + value);
-            if (unit === 'd') now.setDate(now.getDate() + value);
-        }
-        return now.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-    };
+    // Async States
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [executionComplete, setExecutionComplete] = useState(false);
 
-    const filteredSources = TRUSTED_DATA_SOURCES.filter(source =>
-        source.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        source.ticker.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const toggleSource = (source: DataSource) => {
-        if (selectedSources.find(s => s.id === source.id)) {
-            setSelectedSources(selectedSources.filter(s => s.id !== source.id));
-        } else {
-            setSelectedSources([...selectedSources, source]);
-        }
-    };
+    const TOTAL_STEPS = 3;
 
     const reset = () => {
-        setStep(1);
-        setName('');
-        setEquation('');
-        setSelectedSources([]);
-        setSearchQuery('');
-        setDuration('24h');
-        setCustomDays('1');
+        setTimeout(() => {
+            setView('summary');
+            setStep(1);
+            setName('');
+            setSelectedSources([]);
+            setConditions([{ source: '', operator: '>', value: '', connector: null }]);
+            setIsExecuting(false);
+            setExecutionComplete(false);
+        }, 300);
     };
 
     const handleClose = () => {
-        reset();
+        if (isExecuting) return;
         onClose();
+        reset();
+    };
+
+    const executeLaunch = () => {
+        setIsExecuting(true);
+        setTimeout(() => {
+            setExecutionComplete(true);
+            onLaunchSuccess?.();
+            setTimeout(() => handleClose(), 1500);
+        }, 2200);
     };
 
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={handleClose}
-                        className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                     />
 
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        initial={{ opacity: 0, scale: 0.98, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="relative w-full max-w-2xl bg-[#0a0a0c] border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+                        exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                        className="relative w-full max-w-lg bg-[#0a0a0c] border border-white/10 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
                     >
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
-                            <div>
-                                <h2 className="text-xl font-black text-white uppercase tracking-tight flex items-center gap-3">
-                                    <Plus className="w-5 h-5 text-emerald-500" />
-                                    Launch New Market
-                                </h2>
-                                <p className="text-white/40 text-xs font-bold uppercase tracking-widest mt-1">Design your strategic proposal</p>
-                            </div>
-                            <button
-                                onClick={handleClose}
-                                className="p-2 hover:bg-white/5 rounded-xl transition-colors text-white/40 hover:text-white"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                            {step === 1 ? (
-                                <div className="space-y-8">
-                                    {/* Name Input */}
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] px-1 italic">Proposal Identity</label>
-                                        <input
-                                            type="text"
-                                            value={name}
-                                            onChange={(e) => setName(e.target.value)}
-                                            placeholder="e.g., Tech Dominance & Oil Hedge"
-                                            className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-4 text-white font-bold placeholder:text-white/10 focus:outline-none focus:border-emerald-500/30 transition-all"
-                                        />
-                                    </div>
-
-                                    {/* Data Source Selection */}
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between px-1">
-                                            <label className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] italic">Intelligence Layer</label>
-                                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">{selectedSources.length} Selected</span>
-                                        </div>
-
-                                        <div className="relative">
-                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
-                                            <input
-                                                type="text"
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                placeholder="Search data feeds (SPY, BTC, Crude...)"
-                                                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-bold placeholder:text-white/10 focus:outline-none focus:border-emerald-500/30 transition-all"
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                            {filteredSources.map((source) => {
-                                                const isSelected = selectedSources.find(s => s.id === source.id);
-                                                return (
-                                                    <button
-                                                        key={source.id}
-                                                        onClick={() => toggleSource(source)}
-                                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${isSelected ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.02] border-white/5 text-white/40 hover:border-white/10'}`}
-                                                    >
-                                                        <img src={source.icon} alt={source.name} className="w-5 h-5 object-contain" />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[10px] font-black uppercase tracking-tight">{source.ticker}</span>
-                                                            <span className="text-[9px] opacity-40 font-bold truncate">{source.name}</span>
-                                                        </div>
-                                                        {isSelected && <Check className="w-3 h-3 ml-auto" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Equation Builder */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between px-1">
-                                            <label className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] italic">Mathematical Logic</label>
-                                            <button className="text-[10px] font-black text-emerald-500/50 uppercase tracking-widest hover:text-emerald-500 transition-colors">Syntax Help</button>
-                                        </div>
-                                        <div className="relative group">
-                                            <Calculator className="absolute left-4 top-4 w-5 h-5 text-white/10 group-focus-within:text-emerald-500 transition-colors" />
-                                            <textarea
-                                                rows={3}
-                                                value={equation}
-                                                onChange={(e) => setEquation(e.target.value)}
-                                                placeholder="e.g., (asset_SPY_price > 520) AND (asset_BTC_price < 65000)"
-                                                className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-4 pl-12 text-white font-mono text-sm placeholder:text-white/10 focus:outline-none focus:border-emerald-500/30 transition-all resize-none"
-                                            />
-                                        </div>
-                                        <p className="text-[9px] text-white/20 font-bold uppercase tracking-widest px-1">Format: (asset_TICKER_price [operator] [value])</p>
-                                    </div>
-
-                                    {/* Market Duration */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between px-1">
-                                            <label className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] italic">Market Duration</label>
-                                            {duration === 'custom' && (
-                                                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">{customDays} DAYS</span>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-4 gap-2">
-                                            {durationOptions.map((opt) => (
-                                                <button
-                                                    key={opt.value}
-                                                    onClick={() => setDuration(opt.value)}
-                                                    className={`py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${duration === opt.value ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.02] border-white/5 text-white/20 hover:border-white/10'}`}
-                                                >
-                                                    {opt.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        {duration === 'custom' && (
-                                            <div className="pt-2 px-1">
-                                                <input
-                                                    type="range"
-                                                    min="1"
-                                                    max="30"
-                                                    step="1"
-                                                    value={customDays}
-                                                    onChange={(e) => setCustomDays(e.target.value)}
-                                                    className="w-full accent-emerald-500 h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer"
-                                                />
-                                                <div className="flex justify-between mt-2">
-                                                    <span className="text-[8px] font-black text-white/10 uppercase tracking-widest">1 Day</span>
-                                                    <span className="text-[8px] font-black text-white/10 uppercase tracking-widest">30 Days</span>
-                                                </div>
+                        {/* Status Overlay */}
+                        <AnimatePresence>
+                            {isExecuting && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="absolute inset-0 z-[210] bg-[#0a0a0c]/98 flex flex-col items-center justify-center p-8 text-center"
+                                >
+                                    {executionComplete ? (
+                                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-4">
+                                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                                                <Check className="w-6 h-6 text-emerald-500" strokeWidth={2} />
                                             </div>
-                                        )}
+                                            <div className="space-y-1">
+                                                <h3 className="text-lg font-bold text-white tracking-tight uppercase">Launch Confirmed</h3>
+                                                <p className="text-xs text-white/40">Market synchronized in evaluation pool.</p>
+                                            </div>
+                                        </motion.div>
+                                    ) : (
+                                        <div className="space-y-6">
+                                            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto" strokeWidth={1.5} />
+                                            <div className="space-y-1.5">
+                                                <h3 className="text-sm font-bold text-white tracking-widest uppercase">Initializing Round</h3>
+                                                <p className="text-[9px] text-white/40 uppercase tracking-[0.2em]">Broadcasting directives...</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {view === 'summary' ? (
+                            /* REFINED SUMMARY VIEW (Synchronized with Dashboard) */
+                            <div className="flex flex-col w-full p-6 sm:p-8">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h2 className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">Launch Interface</h2>
+                                    <button onClick={handleClose} className="p-1.5 hover:bg-white/5 rounded-full transition-colors text-white/20 hover:text-white">
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                {/* Stats Grid - Synchronized with Dashboard scaling */}
+                                <div className="grid grid-cols-3 gap-3 mb-6">
+                                    <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center gap-2 group hover:border-white/10 transition-all">
+                                        <p className="text-[9px] font-black text-white/60 uppercase tracking-[0.15em] text-center">Active Agents</p>
+                                        <p className="text-xl font-bold text-white tabular-nums">{activeAgentsCount}</p>
+                                    </div>
+                                    <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center gap-2 group hover:border-white/10 transition-all">
+                                        <p className="text-[9px] font-black text-white/60 uppercase tracking-[0.15em] text-center">Total Proposals</p>
+                                        <p className="text-xl font-bold text-white tabular-nums">{currentProposalsCount}</p>
+                                    </div>
+                                    <div className="bg-white/[0.03] border border-white/5 rounded-xl p-6 flex flex-col items-center justify-center gap-2 group hover:border-white/10 transition-all">
+                                        <p className="text-[9px] font-black text-white/60 uppercase tracking-[0.15em] text-center">Round Time</p>
+                                        <p className="text-xl font-bold text-emerald-400 tabular-nums uppercase">25m</p>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {/* Review Summary */}
-                                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-6 relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                                            <Brain className="w-24 h-24 text-emerald-500" />
-                                        </div>
+
+                                {/* Info Bar - Compacted */}
+                                <div className="bg-[#121214]/40 border border-white/5 rounded-xl p-5 flex items-start gap-4 mb-8">
+                                    <div className="shrink-0 pt-0.5">
+                                        <Info className="w-4 h-4 text-white/30" />
+                                    </div>
+                                    <p className="text-[10px] sm:text-[11px] font-medium text-white/80 uppercase tracking-tight leading-relaxed">
+                                        Confirming enters your proposal into the evaluation round. Agents start assessing strategic viability immediately.
+                                    </p>
+                                </div>
+
+                                {/* Injected Proposal Review (High Fidelity Reference) */}
+                                {name && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className="relative mb-6 p-6 rounded-3xl bg-[#030704] border border-emerald-500/20 overflow-hidden group/proposal"
+                                    >
+                                        {/* Background Decor */}
+                                        <Brain className="absolute -right-2 -top-2 w-32 h-32 text-emerald-500/[0.03] -rotate-12 pointer-events-none" />
 
                                         <div className="relative z-10 space-y-6">
-                                            <div className="flex items-start justify-between">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1 italic">Strategic Proposal</p>
-                                                    <h3 className="text-2xl font-black text-white tracking-tight leading-tight">{name || 'Untitled Proposal'}</h3>
+                                            {/* Header */}
+                                            <div className="flex justify-between items-start">
+                                                <div className="space-y-1.5">
+                                                    <p className="text-[10px] font-black italic text-emerald-500 uppercase tracking-[0.2em]">Strategic Proposal</p>
+                                                    <h3 className="text-2xl font-black text-white tracking-tight truncate max-w-[280px]">{name}</h3>
                                                 </div>
+                                                <button
+                                                    onClick={() => { setName(''); setSelectedSources([]); setConditions([{ source: '', operator: '>', value: '', connector: null }]); }}
+                                                    className="p-1 px-2 rounded-md bg-white/5 border border-white/5 text-[9px] font-bold text-white/20 hover:text-white/60 hover:border-white/10 transition-all uppercase tracking-widest"
+                                                >
+                                                    Clear Proposal
+                                                </button>
                                             </div>
 
+                                            {/* Details Grid */}
                                             <div className="grid grid-cols-2 gap-8">
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Logic Structure</p>
-                                                    <p className="text-sm font-mono text-white/80 line-clamp-2">{equation || 'No logic defined'}</p>
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Logic Structure</p>
+                                                    <p className="text-sm font-bold text-white/80 font-mono tracking-tight truncate">
+                                                        {conditions.some(c => c.source && c.value)
+                                                            ? conditions.map((c, i) => `${c.source} ${c.operator} ${c.value}${i < conditions.length - 1 ? ` ${c.connector || 'AND'} ` : ''}`).join('')
+                                                            : 'Auto-Evaluated'
+                                                        }
+                                                    </p>
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Intelligence Sources</p>
+                                                <div className="space-y-3">
+                                                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Intelligence Sources</p>
                                                     <div className="flex gap-2">
-                                                        {selectedSources.slice(0, 3).map(s => (
-                                                            <img key={s.id} src={s.icon} title={s.ticker} className="w-5 h-5" alt={s.ticker} />
-                                                        ))}
-                                                        {selectedSources.length > 3 && (
-                                                            <span className="text-[10px] font-black text-white/40">+{selectedSources.length - 3}</span>
+                                                        {selectedSources.length > 0 ? selectedSources.map(s => (
+                                                            <div key={s.id} className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center p-1.5">
+                                                                <img src={s.icon} className="w-full h-full object-contain" alt={s.ticker} />
+                                                            </div>
+                                                        )) : (
+                                                            <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                                                                <Check className="w-4 h-4 text-white/20" />
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black text-white/20 uppercase tracking-widest">Resolution Window</p>
-                                                    <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest">
-                                                        {duration === 'custom' ? `${customDays} DAYS` : duration.toUpperCase()} • {getResolutionTime()}
-                                                    </p>
-                                                </div>
+                                            </div>
+
+                                            {/* Resolution Window */}
+                                            <div className="pt-2">
+                                                <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1.5">Resolution Window</p>
+                                                <p className="text-[11px] font-bold text-emerald-500 uppercase tracking-widest">
+                                                    24h • {new Date(Date.now() + 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, {new Date(Date.now() + 86400000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                </p>
                                             </div>
                                         </div>
-                                    </div>
+                                    </motion.div>
+                                )}
 
-                                    {/* Market Context Stats */}
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 text-center">
-                                            <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Active Agents</p>
-                                            <p className="text-xl font-black text-white tracking-tight">{activeAgentsCount}</p>
-                                        </div>
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 text-center">
-                                            <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Total Proposals</p>
-                                            <p className="text-xl font-black text-white tracking-tight">{currentProposalsCount}</p>
-                                        </div>
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 text-center">
-                                            <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Round Time</p>
-                                            <p className="text-xl font-black text-emerald-500 tracking-tight">25 MIN</p>
-                                        </div>
-                                    </div>
+                                <div className="flex flex-col gap-3">
+                                    <button
+                                        onClick={executeLaunch}
+                                        className="w-full h-14 bg-white text-black rounded-xl font-bold text-xs uppercase tracking-[0.2em] hover:bg-emerald-50 active:scale-[0.99] transition-all flex items-center justify-center gap-2.5 shadow-xl"
+                                    >
+                                        <span className="mt-0.5">Execute Market</span>
+                                        <ArrowRight className="w-4 h-4" />
+                                    </button>
 
-                                    <div className="flex items-start gap-4 p-4 bg-white/[0.01] border border-white/5 rounded-2xl">
-                                        <div className="mt-1">
-                                            <Info className="w-4 h-4 text-white/20" />
-                                        </div>
-                                        <p className="text-[10px] text-white/40 leading-relaxed font-bold uppercase tracking-widest">
-                                            By confirming, your proposal will be entered into the evaluation round. Agents will begin assessing strategic viability immediately after launch.
-                                        </p>
+                                    <button
+                                        onClick={() => setView('designer')}
+                                        className={`w-full h-12 border border-dashed rounded-lg flex items-center justify-center gap-2 transition-all group ${name ? 'border-emerald-500/10 text-emerald-500/40 hover:text-emerald-500 hover:bg-emerald-500/[0.02]' : 'border-white/20 text-white/60 hover:text-emerald-50 hover:bg-white/[0.02]'}`}
+                                    >
+                                        {name ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-inherit">
+                                            {name ? 'Modify Custom Strategy' : 'Inject Custom Strategy'}
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* DESIGNER VIEW (Applying refined dashboard aesthetic) */
+                            <div className="flex flex-col w-full">
+                                <div className="px-8 py-6 flex items-center justify-between border-b border-white/5">
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={() => setView('summary')} className="p-1.5 -ml-1 text-white/20 hover:text-white transition-colors">
+                                            <ArrowLeft className="w-4.5 h-4.5" />
+                                        </button>
+                                        <h2 className="text-sm font-bold text-white uppercase tracking-widest mt-0.5">Custom Strategy</h2>
+                                    </div>
+                                    <div className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest px-2.5 py-1 bg-emerald-500/5 border border-emerald-500/10 rounded-md">
+                                        Step {step} / {TOTAL_STEPS}
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Footer Actions */}
-                        <div className="p-6 border-t border-white/5 bg-white/[0.02] flex items-center justify-between">
-                            <button
-                                onClick={() => step === 1 ? handleClose() : setStep(1)}
-                                className="px-6 py-3 rounded-xl text-[10px] font-black text-white/40 uppercase tracking-[0.2em] hover:text-white transition-colors"
-                            >
-                                {step === 1 ? 'Cancel Execution' : 'Modify Logic'}
-                            </button>
+                                <div className="p-12 pb-8 space-y-16 min-h-[440px]">
+                                    <AnimatePresence mode="wait">
+                                        <motion.div
+                                            key={step}
+                                            initial={{ opacity: 0, x: 5 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: -5 }}
+                                            className="space-y-12"
+                                        >
+                                            {step === 1 && (
+                                                <div>
+                                                    <label className="block text-[13px] font-bold text-white/50 uppercase tracking-[0.2em] mb-6">Strategy Label</label>
+                                                    <input
+                                                        type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                                                        placeholder="Name your proposal"
+                                                        className="w-full bg-white/[0.04] border border-white/10 rounded-xl p-6 text-base text-white font-medium outline-none focus:border-white/30 focus:bg-white/[0.06] transition-all placeholder:text-white/10"
+                                                    />
+                                                </div>
+                                            )}
 
-                            <button
-                                onClick={() => step === 1 ? setStep(2) : handleClose()}
-                                disabled={step === 1 && (!name || !equation || selectedSources.length === 0)}
-                                className={`group flex items-center gap-3 px-8 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all relative overflow-hidden ${step === 2 ? 'bg-emerald-500 text-black hover:bg-emerald-400' : 'bg-white text-black hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-white'}`}
-                            >
-                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
-                                <span className="relative z-10 flex items-center gap-2">
-                                    {step === 1 ? (
-                                        <>
-                                            Review Summary
-                                            <ChevronRight className="w-4 h-4" />
-                                        </>
-                                    ) : (
-                                        <>
-                                            Confirm Launch
-                                            <Database className="w-4 h-4" />
-                                        </>
-                                    )}
-                                </span>
-                            </button>
-                        </div>
+                                            {step === 2 && (
+                                                <div>
+                                                    <label className="block text-[13px] font-bold text-white/50 uppercase tracking-[0.2em] mb-6">Market Sources</label>
+                                                    <div className="grid grid-cols-2 gap-3 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
+                                                        {TRUSTED_DATA_SOURCES.map((s) => {
+                                                            const isSelected = selectedSources.find(x => x.id === s.id);
+                                                            return (
+                                                                <button
+                                                                    key={s.id}
+                                                                    onClick={() => isSelected ? setSelectedSources(selectedSources.filter(x => x.id !== s.id)) : setSelectedSources([...selectedSources, s])}
+                                                                    className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all text-left group ${isSelected ? 'bg-white/5 border-white/20 text-white' : 'bg-white/[0.01] border-white/5 text-white/20 hover:border-white/10'}`}
+                                                                >
+                                                                    <div className="w-9 h-9 rounded-lg bg-black/40 flex items-center justify-center p-1.5 border border-white/10">
+                                                                        <img src={s.icon} className="w-full h-full object-contain" alt={s.ticker} />
+                                                                    </div>
+                                                                    <span className="text-[12px] font-bold tracking-tight uppercase">{s.ticker}</span>
+                                                                    {isSelected && <Check className="w-3.5 h-3.5 ml-auto text-emerald-500" strokeWidth={3} />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {step === 3 && (
+                                                <div className="space-y-6">
+                                                    <label className="block text-[13px] font-bold text-white/50 uppercase tracking-[0.2em]">Activation Logic</label>
+
+                                                    {/* Condition Rows */}
+                                                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                        {conditions.map((cond, idx) => (
+                                                            <div key={idx} className="space-y-3">
+                                                                {/* Connector (AND/OR) - shown for rows after the first */}
+                                                                {idx > 0 && (
+                                                                    <div className="flex items-center gap-2 py-2">
+                                                                        <div className="flex-1 h-px bg-white/5" />
+                                                                        <div className="flex gap-1">
+                                                                            {(['AND', 'OR'] as const).map(c => (
+                                                                                <button
+                                                                                    key={c}
+                                                                                    onClick={() => {
+                                                                                        const updated = [...conditions];
+                                                                                        updated[idx - 1].connector = c;
+                                                                                        setConditions(updated);
+                                                                                    }}
+                                                                                    className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${conditions[idx - 1]?.connector === c
+                                                                                        ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                                                                                        : 'bg-white/[0.02] border border-white/5 text-white/30 hover:text-white/60'
+                                                                                        }`}
+                                                                                >
+                                                                                    {c}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                        <div className="flex-1 h-px bg-white/5" />
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="flex items-center gap-2 p-3 rounded-xl bg-white/[0.02] border border-white/5 group-hover/row:border-white/10 transition-colors">
+                                                                    {/* Source Select */}
+                                                                    <Select
+                                                                        value={cond.source}
+                                                                        onValueChange={(value) => {
+                                                                            const updated = [...conditions];
+                                                                            updated[idx].source = value;
+                                                                            setConditions(updated);
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger className="flex-1 bg-black/20 border-white/10 rounded-lg h-10 text-sm text-white font-medium focus:ring-0 focus:ring-offset-0">
+                                                                            <SelectValue placeholder="Select Source" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent className="bg-[#0a0a0c] border-white/10">
+                                                                            {selectedSources.map(s => (
+                                                                                <SelectItem key={s.id} value={s.ticker} className="text-white hover:bg-white/5 focus:bg-white/5 cursor-pointer">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <img src={s.icon} className="w-4 h-4 object-contain" alt={s.ticker} />
+                                                                                        <span>{s.ticker}</span>
+                                                                                    </div>
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+
+                                                                    {/* Operator Select */}
+                                                                    <Select
+                                                                        value={cond.operator}
+                                                                        onValueChange={(value) => {
+                                                                            const updated = [...conditions];
+                                                                            updated[idx].operator = value;
+                                                                            setConditions(updated);
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger className="w-[4.5rem] bg-black/20 border-white/10 rounded-lg h-10 text-sm font-mono text-emerald-400 font-bold justify-center focus:ring-0 focus:ring-offset-0 px-0">
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent className="bg-[#0a0a0c] border-white/10 min-w-[4.5rem]">
+                                                                            {['>', '<', '>=', '<=', '==', '!='].map(op => (
+                                                                                <SelectItem key={op} value={op} className="text-emerald-400 font-mono hover:bg-white/5 focus:bg-white/5 cursor-pointer justify-center">
+                                                                                    {op}
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+
+                                                                    {/* Value Input */}
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-white/20 uppercase tracking-widest pointer-events-none">Val</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            value={cond.value}
+                                                                            onChange={(e) => {
+                                                                                const updated = [...conditions];
+                                                                                updated[idx].value = e.target.value;
+                                                                                setConditions(updated);
+                                                                            }}
+                                                                            className="w-24 bg-black/20 border border-white/10 rounded-lg h-10 pl-9 pr-3 text-sm font-mono text-white outline-none focus:border-white/20 transition-all placeholder:text-white/10"
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* Remove Row */}
+                                                                    {conditions.length > 1 && (
+                                                                        <button
+                                                                            onClick={() => setConditions(conditions.filter((_, i) => i !== idx))}
+                                                                            className="w-10 h-10 flex items-center justify-center rounded-lg bg-red-500/5 border border-red-500/10 text-red-500/40 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10 transition-all ml-1"
+                                                                        >
+                                                                            <X className="w-4 h-4" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Add Condition */}
+                                                    <button
+                                                        onClick={() => setConditions([...conditions, { source: '', operator: '>', value: '', connector: null }])}
+                                                        className="w-full py-3 rounded-xl border border-dashed border-white/10 hover:border-emerald-500/20 text-white/30 hover:text-emerald-400 transition-all flex items-center justify-center gap-2 group"
+                                                    >
+                                                        <Plus className="w-4 h-4" />
+                                                        <span className="text-[11px] font-bold uppercase tracking-widest">Add Condition</span>
+                                                    </button>
+
+                                                    {/* Preview */}
+                                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                                                        <p className="text-[9px] font-bold text-white/20 uppercase tracking-widest mb-2">Preview</p>
+                                                        <p className="font-mono text-sm text-emerald-400/80">
+                                                            {conditions.map((c, i) =>
+                                                                `${c.source || '?'} ${c.operator} ${c.value || '?'}${i < conditions.length - 1 ? ` ${conditions[i].connector || 'AND'} ` : ''}`
+                                                            ).join('')}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </div>
+
+                                <div className="p-12 pt-0 flex justify-between items-center mt-auto">
+                                    <button
+                                        onClick={() => setStep(s => s > 1 ? s - 1 : 1)}
+                                        disabled={step === 1}
+                                        className="text-[10px] font-bold text-white/10 uppercase tracking-widest hover:text-white transition-colors disabled:opacity-0"
+                                    >
+                                        Previous
+                                    </button>
+                                    <button
+                                        onClick={() => step < TOTAL_STEPS ? setStep(s => s + 1) : setView('summary')}
+                                        className="h-12 px-8 bg-white text-black rounded-xl text-[10px] font-bold uppercase tracking-[0.15em] hover:bg-emerald-50 active:scale-[0.98] transition-all shadow-xl"
+                                    >
+                                        {step === TOTAL_STEPS ? 'Ready' : 'Continue'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </motion.div>
                 </div>
             )}

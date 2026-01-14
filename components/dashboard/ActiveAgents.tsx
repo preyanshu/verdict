@@ -27,61 +27,70 @@ export function ActiveAgents({ agents }: ActiveAgentsProps) {
                 </div>
 
                 <div className="space-y-3">
-                    {agents.map((agent) => (
-                        <div
-                            key={agent.id}
-                            className="bg-white/[0.03] border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all duration-300 group"
-                        >
-                            <div className="flex items-start gap-3 mb-4">
-                                <AgentAvatar id={agent.id} className="w-6 h-6" />
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <p className="text-sm font-bold text-white truncate mr-2">
-                                            {agent.personality.name}
-                                        </p>
-                                        <p className="text-base font-mono font-bold text-white flex-shrink-0">
-                                            ${(agent.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] text-white/50 uppercase font-black tracking-widest bg-white/5 px-2 py-0.5 rounded">
-                                            {agent.personality.riskTolerance}
-                                        </span>
-                                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
-                                            {(agent.trades ?? []).length} Trades
-                                        </span>
-                                    </div>
-                                </div>
+                    {agents.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 px-4 text-center border border-dashed border-white/5 rounded-2xl bg-white/[0.01]">
+                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-3">
+                                <Users className="w-5 h-5 text-white/20" />
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
-                                <div>
-                                    <p className="text-[10px] text-white/40 uppercase font-bold mb-2.5 tracking-wider">Primary Model</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {agent.personality.traits.slice(0, 2).map((trait, i) => (
-                                            <span key={i} className="text-[10px] text-white/70 border border-white/10 bg-white/5 px-2 py-0.5 rounded shadow-sm">
-                                                {trait}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="text-right flex flex-col items-end">
-                                    <p className="text-[10px] text-white/40 uppercase font-bold mb-2.5 tracking-wider">Aggressiveness</p>
-                                    <div className="flex gap-1 mt-0.5">
-                                        {[1, 2, 3, 4, 5].map((i) => (
-                                            <div
-                                                key={i}
-                                                className={`w-3.5 h-1.5 rounded-full transition-colors ${i <= (agent.personality.aggressiveness * 5)
-                                                    ? 'bg-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
-                                                    : 'bg-white/10'
-                                                    }`}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+                            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">No Active Agents</p>
+                            <p className="text-[10px] text-white/20 font-medium">Launch a strategy to deploy agents</p>
                         </div>
-                    ))}
+                    ) : (
+                        agents.map((agent) => (
+                            <div
+                                key={agent.id}
+                                className="bg-white/[0.03] border border-white/10 rounded-xl p-4 hover:border-white/20 transition-all duration-300 group"
+                            >
+                                <div className="flex items-start gap-3 mb-4">
+                                    <AgentAvatar id={agent.id} className="w-6 h-6" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <p className="text-sm font-bold text-white truncate mr-2">
+                                                {agent.personality.name}
+                                            </p>
+                                            <p className="text-base font-mono font-bold text-white flex-shrink-0">
+                                                ${(agent.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-white/50 uppercase font-black tracking-widest bg-white/5 px-2 py-0.5 rounded">
+                                                {agent.personality.riskTolerance}
+                                            </span>
+                                            <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">
+                                                {(agent.trades ?? []).length} Trades
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                                    <div>
+                                        <p className="text-[10px] text-white/40 uppercase font-bold mb-2.5 tracking-wider">Primary Model</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {agent.personality.traits.slice(0, 2).map((trait, i) => (
+                                                <span key={i} className="text-[10px] text-white/70 border border-white/10 bg-white/5 px-2 py-0.5 rounded shadow-sm">
+                                                    {trait}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="text-right flex flex-col items-end">
+                                        <p className="text-[10px] text-white/40 uppercase font-bold mb-2.5 tracking-wider">Aggressiveness</p>
+                                        <div className="flex gap-1 mt-0.5">
+                                            {[1, 2, 3, 4, 5].map((i) => (
+                                                <div
+                                                    key={i}
+                                                    className={`w-3.5 h-1.5 rounded-full transition-colors ${i <= (agent.personality.aggressiveness * 5)
+                                                        ? 'bg-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
+                                                        : 'bg-white/10'
+                                                        }`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )))}
                 </div>
             </div>
         </div>

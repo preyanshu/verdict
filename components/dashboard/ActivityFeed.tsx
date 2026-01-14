@@ -49,8 +49,12 @@ export function ActivityFeed({ agents, filterStrategyId, activeProposalName }: {
 
                 <div className="space-y-3">
                     {activities.length === 0 ? (
-                        <div className="p-8 text-center text-[10px] text-white/20 uppercase font-black tracking-widest">
-                            No trades recorded
+                        <div className="flex flex-col items-center justify-center py-12 px-4 text-center border border-dashed border-white/5 rounded-2xl bg-white/[0.01]">
+                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mb-3">
+                                <MessageSquare className="w-5 h-5 text-white/20" />
+                            </div>
+                            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-1">No Activity Yet</p>
+                            <p className="text-[10px] text-white/20 font-medium">Trades will appear here live</p>
                         </div>
                     ) : (
                         activities.map((activity, i) => {

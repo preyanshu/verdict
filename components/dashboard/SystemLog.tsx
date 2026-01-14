@@ -47,7 +47,7 @@ export function SystemLog({ agents }: SystemLogProps) {
             const roll = Math.random();
             let newLog: LogEntry;
 
-            if (roll > 0.7) {
+            if (roll > 0.7 && agents.length > 0) {
                 // Agent specific log
                 const agent = agents[Math.floor(Math.random() * agents.length)];
                 const actions = [
@@ -109,9 +109,9 @@ export function SystemLog({ agents }: SystemLogProps) {
     }, [logs]);
 
     return (
-        <div className="flex flex-col h-full bg-[#050507] border-r border-white/5">
+        <div className="flex flex-col h-full bg-transparent">
             {/* Sticky Header & Filter */}
-            <div className="p-6 pb-2 bg-[#050507]">
+            <div className="p-6 pb-2 bg-transparent">
                 <div className="flex items-center gap-3 mb-6">
                     <Terminal className="w-5 h-5 text-white/20" />
                     <h2 className="text-xl font-black text-white tracking-tight uppercase">System Logs</h2>
@@ -130,29 +130,38 @@ export function SystemLog({ agents }: SystemLogProps) {
 
             <div
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto p-6 pt-4 space-y-3 custom-scrollbar bg-[#050507]"
+                className="flex-1 overflow-y-auto p-6 pt-4 space-y-3 custom-scrollbar bg-transparent"
             >
-                {filteredLogs.map((log) => (
-                    <div
-                        key={log.id}
-                        className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 hover:bg-white/[0.04] transition-all group"
-                    >
-                        <div className="flex items-start justify-between gap-4 mb-2">
-                            <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${log.type === 'success' ? 'text-emerald-500' :
-                                log.type === 'trade' ? 'text-blue-500' :
-                                    log.type === 'error' ? 'text-red-500' : 'text-white/40'
-                                }`}>
-                                {log.type}
-                            </span>
-                            <span className="text-[10px] font-mono text-white/20 font-bold">
-                                {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                            </span>
+                {agents.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 border-t border-white/5 opacity-60">
+                        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-6">
+                            <Terminal className="w-8 h-8 text-white/20" />
                         </div>
-                        <p className="text-[12px] font-medium text-white/80 leading-relaxed font-mono selection:bg-emerald-500/30">
-                            {log.message}
-                        </p>
+                        <p className="text-xs font-black text-white/40 uppercase tracking-widest mb-1">System Standby</p>
+                        <p className="text-[10px] text-white/30 font-medium">Protocol ready. Initialize agents to begin logging.</p>
                     </div>
-                ))}
+                ) : (
+                    filteredLogs.map((log) => (
+                        <div
+                            key={log.id}
+                            className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 hover:bg-white/[0.04] transition-all group"
+                        >
+                            <div className="flex items-start justify-between gap-4 mb-2">
+                                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${log.type === 'success' ? 'text-emerald-500' :
+                                    log.type === 'trade' ? 'text-blue-500' :
+                                        log.type === 'error' ? 'text-red-500' : 'text-white/40'
+                                    }`}>
+                                    {log.type}
+                                </span>
+                                <span className="text-[10px] font-mono text-white/20 font-bold">
+                                    {new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                </span>
+                            </div>
+                            <p className="text-[12px] font-medium text-white/80 leading-relaxed font-mono selection:bg-emerald-500/30">
+                                {log.message}
+                            </p>
+                        </div>
+                    )))}
             </div>
 
             <div className="p-4 border-t border-white/5 bg-white/[0.01] flex items-center justify-end">
