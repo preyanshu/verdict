@@ -212,58 +212,7 @@ Configurable round durations allow for:
 - Continuous improvement of strategies
 - High-velocity strategy discovery
 
-## Setup
 
-### Prerequisites
-
-- [Bun](https://bun.sh) runtime
-- Node.js 18+ (for Hardhat contract deployment)
-- Wallet with testnet tokens (Mantle Sepolia, Arbitrum Sepolia, or Hardhat local)
-
-### Installation
-
-```bash
-bun install
-```
-
-### Configuration
-
-Create a `.env` file:
-
-```bash
-# Environment
-APP_ENV=prod
-
-# Groq API (for LLM)
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.3-70b-versatile
-
-
-RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-CHAIN_ID=421614
-ROUTER_ADDRESS=0x7C2b85130e5c2A51058773e7932245DF9b4A4D34
-BACKEND_PRIVATE_KEY=your_backend_wallet_private_key
-BLOCK_EXPLORER_URL=https://sepolia.arbiscan.io/
-```
-
-### Running
-
-```bash
-# Start backend server
-bun run index.ts
-
-# Deploy contracts (in contracts-hardhat/)
-cd contracts-hardhat
-bunx hardhat run scripts/deploy.js --network arbitrumSepolia
-```
-
-## Supported Networks
-
-- **Mantle Sepolia** (Testnet) - Chain ID: 5003
-- **Arbitrum Sepolia** (Testnet) - Chain ID: 421614
-- **Hardhat Local** - Chain ID: 31337
-
-See [docs/multi-chain-setup.md](docs/multi-chain-setup.md) for detailed network configuration.
 
 ## Future Improvements
 
