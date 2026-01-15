@@ -85,10 +85,13 @@ export default function DashboardPage() {
     const [agents, setAgents] = useState<Agent[]>([]);
     const [strategies, setStrategies] = useState<MarketStrategy[]>([]);
     const [isOptimisticExecuting, setIsOptimisticExecuting] = useState(false);
+    const [localRoundStartTime, setLocalRoundStartTime] = useState<number | null>(null);
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [userTrades, setUserTrades] = useState<any[]>([]);
     const statusHoldCounter = useRef(0);
     const wasExecuting = useRef(false);
+    const previousRoundNumber = useRef<number | null>(null);
+    const previousStrategyCount = useRef<number>(0);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -97,12 +100,27 @@ export default function DashboardPage() {
                     api.getMarketState(),
                     api.getAgents()
                 ]);
+                
+                // Clear user trades when round changes or strategies are reset
+                const roundChanged = previousRoundNumber.current !== null && 
+                                     previousRoundNumber.current !== state.roundNumber;
+                const strategiesCleared = previousStrategyCount.current > 0 && 
+                                          state.strategies.length === 0;
+                
+                if (roundChanged || strategiesCleared) {
+                    setUserTrades([]);
+                }
+                
+                previousRoundNumber.current = state.roundNumber;
+                previousStrategyCount.current = state.strategies.length;
+                
                 setStrategies(state.strategies);
                 setAgents(fetchedAgents);
 
                 // Handle status transition debounce (hold 'Executing' for 3 polls)
                 if (state.isExecutingTrades) {
                     setIsOptimisticExecuting(false);
+                    setLocalRoundStartTime(null);
                     statusHoldCounter.current = 0;
                     wasExecuting.current = true;
                     setMarketState(state);
@@ -139,9 +157,13 @@ export default function DashboardPage() {
     const selectedStrategy = strategies.find(s => s.id === selectedStrategyId);
 
     const [isOnboardingLoading, setIsOnboardingLoading] = useState(false);
+    const [onboardingError, setOnboardingError] = useState<string | null>(null);
+    const [onboardingErrorStep, setOnboardingErrorStep] = useState<1 | 2 | 3 | null>(null);
 
     const handleOnboardingStep = async (step: 1 | 2 | 3) => {
         setIsOnboardingLoading(true);
+        setOnboardingError(null);
+        setOnboardingErrorStep(null);
         const minStepTime = 2000;
         const confirmTime = 1000;
         const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -165,6 +187,9 @@ export default function DashboardPage() {
             }
         } catch (error) {
             console.error(`Onboarding step ${step} failed:`, error);
+            const errorMessage = error instanceof Error ? error.message : `Failed to complete step ${step}. Please try again.`;
+            setOnboardingError(errorMessage);
+            setOnboardingErrorStep(step);
         } finally {
             setIsOnboardingLoading(false);
         }
@@ -357,7 +382,7 @@ export default function DashboardPage() {
                                             </div>
                                         </div>
 
-                                        {marketState && <MarketStatus state={marketState} agentCount={agents.length} now={now} forceExecuting={isOptimisticExecuting} />}
+                                        {marketState && <MarketStatus state={marketState} agentCount={agents.length} now={now} forceExecuting={isOptimisticExecuting} localStartTime={localRoundStartTime} />}
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 md:gap-6 mt-8">
                                             {filteredStrategies.map((strategy) => (
@@ -414,17 +439,32 @@ export default function DashboardPage() {
                                                     <h3 className="text-xl font-black uppercase tracking-tight text-white mb-4">Generate Proposal</h3>
                                                     <p className="text-sm font-medium text-white/40 leading-relaxed mb-10 min-h-[60px]">Define your custom market parameters and automated resolution logic.</p>
                                                     {onboardingStep === 1 && (
-                                                        <button
-                                                            onClick={() => handleOnboardingStep(1)}
-                                                            disabled={isOnboardingLoading}
-                                                            className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
-                                                        >
-                                                            {isOnboardingLoading ? (
-                                                                <><Loader2 className="w-4 h-4 animate-spin" /><span>Generating...</span></>
-                                                            ) : (
-                                                                <><span className="mt-0.5">Generate Proposal</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleOnboardingStep(1)}
+                                                                disabled={isOnboardingLoading}
+                                                                className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
+                                                            >
+                                                                {isOnboardingLoading ? (
+                                                                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Generating...</span></>
+                                                                ) : (
+                                                                    <><span className="mt-0.5">Generate Proposal</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                                )}
+                                                            </button>
+                                                            {onboardingErrorStep === 1 && onboardingError && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, y: -10 }}
+                                                                    animate={{ opacity: 1, y: 0 }}
+                                                                    className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3"
+                                                                >
+                                                                    <X className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Step 1 Failed</p>
+                                                                        <p className="text-[11px] text-red-300/80">{onboardingError}</p>
+                                                                    </div>
+                                                                </motion.div>
                                                             )}
-                                                        </button>
+                                                        </>
                                                     )}
                                                 </motion.div>
 
@@ -445,17 +485,32 @@ export default function DashboardPage() {
                                                     <h3 className="text-xl font-black uppercase tracking-tight text-white mb-4">Synthesize Agents</h3>
                                                     <p className="text-sm font-medium text-white/40 leading-relaxed mb-10 min-h-[60px]">The protocol uses LLMs to generate specialized AI behaviors for your market.</p>
                                                     {onboardingStep === 2 && (
-                                                        <button
-                                                            onClick={() => handleOnboardingStep(2)}
-                                                            disabled={isOnboardingLoading}
-                                                            className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
-                                                        >
-                                                            {isOnboardingLoading ? (
-                                                                <><Loader2 className="w-4 h-4 animate-spin" /><span>Synthesizing...</span></>
-                                                            ) : (
-                                                                <><span className="mt-0.5">Synthesize Agents</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleOnboardingStep(2)}
+                                                                disabled={isOnboardingLoading}
+                                                                className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
+                                                            >
+                                                                {isOnboardingLoading ? (
+                                                                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Synthesizing...</span></>
+                                                                ) : (
+                                                                    <><span className="mt-0.5">Synthesize Agents</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                                )}
+                                                            </button>
+                                                            {onboardingErrorStep === 2 && onboardingError && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, y: -10 }}
+                                                                    animate={{ opacity: 1, y: 0 }}
+                                                                    className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3"
+                                                                >
+                                                                    <X className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Step 2 Failed</p>
+                                                                        <p className="text-[11px] text-red-300/80">{onboardingError}</p>
+                                                                    </div>
+                                                                </motion.div>
                                                             )}
-                                                        </button>
+                                                        </>
                                                     )}
                                                     {onboardingStep < 2 && <div className="w-full py-4 text-white/5 font-black text-[10px] uppercase tracking-widest italic">Awaiting Proposal</div>}
                                                 </motion.div>
@@ -476,17 +531,32 @@ export default function DashboardPage() {
                                                     <h3 className="text-xl font-black uppercase tracking-tight text-white mb-4">Orchestrate & Trade</h3>
                                                     <p className="text-sm font-medium text-white/40 leading-relaxed mb-10 min-h-[60px]">Deploying the autonomous trading fleet for synchronized market execution.</p>
                                                     {onboardingStep === 3 && (
-                                                        <button
-                                                            onClick={() => handleOnboardingStep(3)}
-                                                            disabled={isOnboardingLoading}
-                                                            className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
-                                                        >
-                                                            {isOnboardingLoading ? (
-                                                                <><Loader2 className="w-4 h-4 animate-spin" /><span>Orchestrating...</span></>
-                                                            ) : (
-                                                                <><span className="mt-0.5">Start Trading</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleOnboardingStep(3)}
+                                                                disabled={isOnboardingLoading}
+                                                                className="group/btn relative w-full flex items-center justify-center gap-4 px-8 py-5 rounded-2xl bg-white text-black font-black text-[11px] uppercase tracking-[0.2em] hover:bg-emerald-400 transition-all hover:scale-105 active:scale-95 shadow-2xl disabled:opacity-50 disabled:scale-100"
+                                                            >
+                                                                {isOnboardingLoading ? (
+                                                                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Orchestrating...</span></>
+                                                                ) : (
+                                                                    <><span className="mt-0.5">Start Trading</span><ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></>
+                                                                )}
+                                                            </button>
+                                                            {onboardingErrorStep === 3 && onboardingError && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, y: -10 }}
+                                                                    animate={{ opacity: 1, y: 0 }}
+                                                                    className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3"
+                                                                >
+                                                                    <X className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Step 3 Failed</p>
+                                                                        <p className="text-[11px] text-red-300/80">{onboardingError}</p>
+                                                                    </div>
+                                                                </motion.div>
                                                             )}
-                                                        </button>
+                                                        </>
                                                     )}
                                                     {onboardingStep < 3 && <div className="w-full py-4 text-white/5 font-black text-[10px] uppercase tracking-widest italic">Awaiting Synthesis</div>}
                                                 </motion.div>
@@ -505,12 +575,14 @@ export default function DashboardPage() {
                 onClose={() => setIsCreateModalOpen(false)}
                 onLaunchSuccess={() => {
                     setIsOptimisticExecuting(true);
+                    setLocalRoundStartTime(Date.now());
                 }}
                 activeAgentsCount={agents.length}
                 currentProposalsCount={strategies.length}
                 roundEndTime={marketState?.roundEndTime}
+                roundStartTime={localRoundStartTime || marketState?.roundStartTime}
                 roundDuration={marketState?.roundDuration}
-                isExecutingTrades={marketState?.isExecutingTrades}
+                isExecutingTrades={marketState?.isExecutingTrades || isOptimisticExecuting}
                 now={now}
             />
         </div>

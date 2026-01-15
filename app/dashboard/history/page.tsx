@@ -26,7 +26,7 @@ import {
 import { TRUSTED_DATA_SOURCES } from "@/lib/data-sources";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { getYESBalance, getYesTokenAddress, getAllowance, approveToken, ROUTER_ADDRESS, publicClient, quantumEVM, executeSwap } from "@/lib/blockchain";
+import { getYESBalance, getRawYESBalance, getYesTokenAddress, getAllowance, approveToken, ROUTER_ADDRESS, publicClient, quantumEVM, executeSwap } from "@/lib/blockchain";
 import { createWalletClient, custom, parseUnits } from "viem";
 
 export default function HistoryPage() {
@@ -36,6 +36,9 @@ export default function HistoryPage() {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [auditExpandedIds, setAuditExpandedIds] = useState<Set<string>>(new Set());
     const [redeemedIds, setRedeemedIds] = useState<Set<string>>(new Set());
+    const [redeemLoaders, setRedeemLoaders] = useState<Set<string>>(new Set());
+    const [redeemErrors, setRedeemErrors] = useState<Record<string, string>>({});
+    const [verificationResults, setVerificationResults] = useState<Record<string, Record<number, number>>>({});
     const [realHoldings, setRealHoldings] = useState<Record<string, string>>({});
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const { user, authenticated } = usePrivy();
@@ -93,6 +96,13 @@ export default function HistoryPage() {
     const handleRedeem = async (id: string, amount: number) => {
         if (!wallets[0] || !authenticated) return;
 
+        setRedeemLoaders(prev => new Set(prev).add(id));
+        setRedeemErrors(prev => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+        });
+
         try {
             // Ensure we are on the correct chain
             if (wallets[0].chainId !== `eip155:${quantumEVM.id}`) {
@@ -107,19 +117,31 @@ export default function HistoryPage() {
             });
 
             const yesTokenAddr = await getYesTokenAddress(id);
-            const amountInWei = parseUnits(amount.toString(), 18);
+            // Fetch exact raw balance to avoid float precision issues during swap
+            const amountInWei = await getRawYESBalance(id, wallets[0].address);
+
+            if (amountInWei <= BigInt(0)) {
+                throw new Error("No balance to redeem");
+            }
 
             // Check and handle allowance
+            // We're approving the Router to spend our YES tokens
             const currentAllowance = await getAllowance(yesTokenAddr, wallets[0].address, ROUTER_ADDRESS);
 
             if (currentAllowance < amountInWei) {
+                console.log("Allowance insufficient, requesting approval...");
+                // Approve Max Uint to avoid future approvals
                 const approveHash = await approveToken(walletClient, yesTokenAddr, ROUTER_ADDRESS);
+                console.log("Approval sent, waiting for receipt...", approveHash);
                 await publicClient.waitForTransactionReceipt({ hash: approveHash });
+                console.log("Approval confirmed.");
+
+                // Allow a small buffer for node indexing
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            // Execute 1:1 Swap (Redeem)
-            // minAmountOut is same as amount since it graduated at 1:1
-            const txHash = await executeSwap(walletClient, id, yesTokenAddr, amount.toString(), amount.toString());
+            // Execute 1:1 Swap (Redeem) but with 0 slippage guard
+            const txHash = await executeSwap(walletClient, id, yesTokenAddr, amountInWei, "0");
             await publicClient.waitForTransactionReceipt({ hash: txHash });
 
             setRedeemedIds(prev => new Set(prev).add(id));
@@ -128,20 +150,50 @@ export default function HistoryPage() {
             const newBal = await getYESBalance(id, wallets[0].address);
             setRealHoldings(prev => ({ ...prev, [id]: newBal }));
 
-        } catch (error) {
-            console.error("Redemption failed:", error);
+        } catch (error: any) {
+            console.error("Redemption failed detailed:", error);
+            // Show user-friendly error
+            setRedeemErrors(prev => ({ ...prev, [id]: "Transaction failed. Please try again." }));
+        } finally {
+            setRedeemLoaders(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
-    const handleVerifyArchive = async (id: string) => {
+    const handleVerifyArchive = async (id: string, dataSources: any[]) => {
         setVerifyingId(id);
-        await new Promise(r => setTimeout(r, 1500));
+
+        const results: Record<number, number> = {};
+
+        // Fetch real data from trusted endpoints
+        await Promise.all(dataSources.map(async (ds) => {
+            const sourceConfig = TRUSTED_DATA_SOURCES.find(t => t.id === ds.id);
+            if (sourceConfig?.endpoint) {
+                try {
+                    const res = await fetch(sourceConfig.endpoint);
+                    const data = await res.json();
+                    // DIA API commonly returns { Price: 123.45, ... }
+                    if (data?.Price) {
+                        results[ds.id] = Number(data.Price);
+                    }
+                } catch (error) {
+                    console.error(`Failed to verify data source ${ds.id}:`, error);
+                }
+            }
+        }));
+
+        setVerifyingId(null);
+        setVerificationResults(prev => ({ ...prev, [id]: results }));
+
         setVerifiedIds(prev => {
             const next = new Set(prev);
             next.add(id);
             return next;
         });
-        setVerifyingId(null);
+
         // Auto-expand the Resolution Proof accordion after verification
         setAuditExpandedIds(prev => {
             const next = new Set(prev);
@@ -295,8 +347,8 @@ export default function HistoryPage() {
                                                                 <div>
                                                                     <div className="flex flex-wrap items-center gap-3 mb-1.5">
                                                                         <h2 className="text-lg md:text-2xl font-bold text-white tracking-tight leading-tight">{proposal.name}</h2>
-                                                                        <span className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border ${proposal.winner === 'yes' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-                                                                            {proposal.winner?.toUpperCase()}
+                                                                        <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border bg-red-500/20 text-red-400 border-red-500/30">
+                                                                            NO
                                                                         </span>
                                                                     </div>
                                                                     <div className="flex items-center gap-4">
@@ -359,7 +411,7 @@ export default function HistoryPage() {
                                                                                     </div>
                                                                                 </div>
                                                                                 <button
-                                                                                    onClick={(e) => { e.stopPropagation(); handleVerifyArchive(proposal.id); }}
+                                                                                    onClick={(e) => { e.stopPropagation(); handleVerifyArchive(proposal.id, proposal.usedDataSources || []); }}
                                                                                     disabled={isVerifying || isVerified}
                                                                                     className={`w-full py-2 md:py-2.5 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border ${isVerified
                                                                                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
@@ -373,7 +425,7 @@ export default function HistoryPage() {
                                                                                     ) : (
                                                                                         <RefreshCw className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                                                     )}
-                                                                                    {isVerifying ? 'Verifying...' : isVerified ? 'Audit Passed' : 'Verify Outcome'}
+                                                                                    {isVerifying ? 'Verifying on-chain...' : isVerified ? 'Audit Passed' : 'Verify Outcome'}
                                                                                 </button>
                                                                             </div>
                                                                         </div>
@@ -382,73 +434,89 @@ export default function HistoryPage() {
                                                             )}
                                                         </AnimatePresence>
                                                     </div>
-
                                                     {/* User Position & Redemption (Only if winner) */}
-                                                    {(() => {
-                                                        const balance = realHoldings[proposal.id];
-                                                        if (!balance || Number(balance) <= 0) return null;
+                                                    {
+                                                        (() => {
+                                                            const balance = realHoldings[proposal.id];
+                                                            if (!balance || Number(balance) <= 0) return null;
 
-                                                        const isWinner = proposal.winner === 'yes';
-                                                        if (!isWinner) return null; // If they lost, value is $0, so don't show
+                                                            const isWinner = proposal.winner === 'yes';
+                                                            // Removed early return to show liquidated positions
 
-                                                        const amount = Number(balance);
-                                                        const type = 'YES';
-                                                        const isRedeemed = redeemedIds.has(proposal.id);
+                                                            const amount = Number(balance);
+                                                            const type = 'YES';
+                                                            const isRedeemed = redeemedIds.has(proposal.id);
 
-                                                        return (
-                                                            <div className={`mx-4 md:mx-8 mb-6 p-4 md:p-5 rounded-2xl border transition-all ${isWinner ? 'bg-emerald-500/[0.02] border-emerald-500/10 shadow-sm' : 'bg-red-500/[0.01] border-red-500/5'}`}>
-                                                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                                                                    <div className="flex items-center gap-4 w-full sm:w-auto">
-                                                                        <div className={`hidden lg:flex w-10 h-10 rounded-xl shrink-0 items-center justify-center border transition-all duration-500 ${isWinner ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-                                                                            <Wallet className={`w-5 h-5 ${isWinner ? 'text-emerald-400' : 'text-red-400'}`} />
-                                                                        </div>
-
-                                                                        <div className="flex flex-1 items-center justify-between sm:justify-start sm:gap-8">
-                                                                            <div className="flex flex-col">
-                                                                                <div className="flex items-baseline gap-1.5">
-                                                                                    <span className="text-xl md:text-2xl font-black text-white tracking-tighter tabular-nums leading-none">
-                                                                                        {amount.toLocaleString()}
-                                                                                    </span>
-                                                                                    <span className="text-[9px] md:text-[10px] font-black text-white/40 uppercase tracking-widest">{type}</span>
-                                                                                </div>
-                                                                                <span className="text-[8px] font-bold text-white/10 uppercase tracking-wider mt-0.5">Quantity</span>
+                                                            return (
+                                                                <div className={`mx-4 md:mx-8 mb-6 p-4 md:p-5 rounded-2xl border transition-all ${isWinner ? 'bg-emerald-500/[0.02] border-emerald-500/10 shadow-sm' : 'bg-red-500/[0.01] border-red-500/5'}`}>
+                                                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                                                                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                                                                            <div className={`hidden lg:flex w-10 h-10 rounded-xl shrink-0 items-center justify-center border transition-all duration-500 ${isWinner ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+                                                                                <Wallet className={`w-5 h-5 ${isWinner ? 'text-emerald-400' : 'text-red-400'}`} />
                                                                             </div>
 
-                                                                            <ArrowRight className="w-3.5 h-3.5 opacity-20" />
-
-                                                                            <div className="flex flex-col">
-                                                                                <div className="flex items-baseline gap-1.5">
-                                                                                    <span className={`text-xl md:text-2xl font-black tracking-tighter tabular-nums leading-none ${isWinner ? 'text-emerald-400' : 'text-red-400/40 line-through'}`}>
-                                                                                        ${isWinner ? amount.toLocaleString() : '0.00'}
-                                                                                    </span>
-                                                                                    <span className="text-[9px] md:text-[10px] font-black text-white/30 uppercase tracking-widest">vUSD</span>
+                                                                            <div className="flex flex-1 items-center justify-between sm:justify-start sm:gap-8">
+                                                                                <div className="flex flex-col">
+                                                                                    <div className="flex items-baseline gap-1.5">
+                                                                                        <span className="text-xl md:text-2xl font-black text-white tracking-tighter tabular-nums leading-none">
+                                                                                            {amount.toLocaleString()}
+                                                                                        </span>
+                                                                                        <span className="text-[9px] md:text-[10px] font-black text-white/40 uppercase tracking-widest">{type}</span>
+                                                                                    </div>
+                                                                                    <span className="text-[8px] font-bold text-white/10 uppercase tracking-wider mt-0.5">Quantity</span>
                                                                                 </div>
-                                                                                <span className="text-[8px] font-bold text-white/10 uppercase tracking-wider mt-0.5">Value</span>
+
+                                                                                <ArrowRight className="w-3.5 h-3.5 opacity-20" />
+
+                                                                                <div className="flex flex-col">
+                                                                                    <div className="flex items-baseline gap-1.5">
+                                                                                        <span className={`text-xl md:text-2xl font-black tracking-tighter tabular-nums leading-none ${isWinner ? 'text-emerald-400' : 'text-red-400/40 line-through'}`}>
+                                                                                            ${isWinner ? amount.toLocaleString() : '0.00'}
+                                                                                        </span>
+                                                                                        <span className="text-[9px] md:text-[10px] font-black text-white/30 uppercase tracking-widest">vUSD</span>
+                                                                                    </div>
+                                                                                    <span className="text-[8px] font-bold text-white/10 uppercase tracking-wider mt-0.5">Value</span>
+                                                                                </div>
                                                                             </div>
                                                                         </div>
+
+                                                                        {isWinner && (
+                                                                            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); handleRedeem(proposal.id, amount); }}
+                                                                                    disabled={isRedeemed || redeemLoaders.has(proposal.id)}
+                                                                                    className={`w-full sm:w-auto px-6 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center justify-center gap-2 ${isRedeemed || redeemLoaders.has(proposal.id)
+                                                                                        ? 'bg-emerald-500/5 text-emerald-500/40 border border-emerald-500/10 cursor-not-allowed'
+                                                                                        : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:scale-105 active:scale-95 shadow-lg'
+                                                                                        }`}
+                                                                                >
+                                                                                    {redeemLoaders.has(proposal.id) ? (
+                                                                                        <>
+                                                                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                                                                            Processing
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        isRedeemed ? 'Claimed' : 'Redeem vUSD'
+                                                                                    )}
+                                                                                </button>
+                                                                                {redeemErrors[proposal.id] && (
+                                                                                    <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded text-[9px] font-bold text-red-400 uppercase tracking-wide animate-in fade-in slide-in-from-top-1">
+                                                                                        <XCircle className="w-3 h-3" />
+                                                                                        {redeemErrors[proposal.id]}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                        {!isWinner && (
+                                                                            <div className="w-full sm:w-auto px-6 h-10 flex items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] font-black text-red-400 uppercase tracking-widest">
+                                                                                Position Liquidated
+                                                                            </div>
+                                                                        )}
                                                                     </div>
-
-                                                                    {isWinner && (
-                                                                        <button
-                                                                            onClick={(e) => { e.stopPropagation(); handleRedeem(proposal.id, amount); }}
-                                                                            disabled={isRedeemed}
-                                                                            className={`w-full sm:w-auto px-6 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${isRedeemed
-                                                                                ? 'bg-emerald-500/5 text-emerald-500/40 border border-emerald-500/10 cursor-not-allowed'
-                                                                                : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:scale-105 active:scale-95 shadow-lg'
-                                                                                }`}
-                                                                        >
-                                                                            {isRedeemed ? 'Claimed' : 'Redeem vUSD'}
-                                                                        </button>
-                                                                    )}
-                                                                    {!isWinner && (
-                                                                        <div className="w-full sm:w-auto px-6 h-10 flex items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] font-black text-red-400 uppercase tracking-widest">
-                                                                            Position Liquidated
-                                                                        </div>
-                                                                    )}
                                                                 </div>
-                                                            </div>
-                                                        );
-                                                    })()}
+                                                            );
+                                                        })()
+                                                    }
 
                                                     <button
                                                         onClick={() => toggleAuditExpand(proposal.id)}
@@ -484,7 +552,10 @@ export default function HistoryPage() {
                                                                             <div className="grid grid-cols-1 gap-3 mb-6">
                                                                                 {proposal.usedDataSources?.map((ds, idx) => {
                                                                                     const dsInfo = TRUSTED_DATA_SOURCES.find(t => t.id === ds.id);
-                                                                                    const isConditionMet = ds.operator === '>' ? ds.currentValue > ds.targetValue : ds.currentValue < ds.targetValue;
+                                                                                    // Use verified real-time value if available, otherwise historical snapshot
+                                                                                    const verifiedVal = verificationResults[proposal.id]?.[ds.id];
+                                                                                    const effectiveValue = verifiedVal !== undefined ? verifiedVal : ds.currentValue;
+                                                                                    const isConditionMet = ds.operator === '>' ? effectiveValue > ds.targetValue : effectiveValue < ds.targetValue;
 
                                                                                     return (
                                                                                         <div key={idx} className="flex items-center justify-between px-4 py-3 bg-white/[0.02] border border-white/5 rounded-xl gap-4">
@@ -493,7 +564,12 @@ export default function HistoryPage() {
                                                                                                 <span className="text-[10px] md:text-[11px] font-bold text-white/40 uppercase truncate">{dsInfo?.ticker || 'Variable'}</span>
                                                                                             </div>
                                                                                             <div className="flex items-center gap-2 md:gap-4 shrink-0">
-                                                                                                <span className="text-[10px] md:text-xs font-mono font-bold text-white/60">{ds.currentValue}</span>
+                                                                                                <div className="flex flex-col items-end">
+                                                                                                    <span className="text-[10px] md:text-xs font-mono font-bold text-white/60">{effectiveValue}</span>
+                                                                                                    {verifiedVal !== undefined && (
+                                                                                                        <span className="text-[8px] font-bold text-emerald-500/60 uppercase tracking-tighter">Live Verified</span>
+                                                                                                    )}
+                                                                                                </div>
                                                                                                 <ArrowRight className="w-3 h-3 text-white/20" />
                                                                                                 <span className={`text-[10px] md:text-xs font-mono font-bold px-2 py-0.5 rounded-md ${isConditionMet ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                                                                                                     {isConditionMet ? 'PASS' : 'FAIL'}
@@ -505,33 +581,25 @@ export default function HistoryPage() {
                                                                             </div>
 
                                                                             <div className="pt-6 border-t border-white/5">
-                                                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                                                                                    <span className="text-[10px] md:text-[11px] font-bold text-white/40 uppercase tracking-widest">Audit Summary</span>
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <span className="text-[9px] md:text-[10px] text-white/40 uppercase font-black tracking-tighter">Result:</span>
-                                                                                        <span className={`px-4 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest border shadow-lg ${proposal.winner === 'yes' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-                                                                                            {proposal.winner === 'yes' ? 'PASSED (TRUE)' : 'FAILED (FALSE)'}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="p-4 md:p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
-                                                                                    <div className="flex items-start gap-3">
-                                                                                        <ShieldCheck className="w-4 h-4 text-emerald-500 mt-1 flex-shrink-0" />
-                                                                                        <p className="text-xs md:text-[14px] text-white/70 font-medium leading-relaxed">
-                                                                                            Verification confirmed using historical data snapshots from
-                                                                                            <span className="text-white font-bold mx-1 border-b border-white/20">
-                                                                                                {new Date(proposal.resolutionDeadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                                                                            </span>
-                                                                                            and subsequent validation.
-                                                                                        </p>
-                                                                                    </div>
-                                                                                    <div className="pl-7">
-                                                                                        <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-emerald-500/10 rounded-md border border-emerald-500/20">
-                                                                                            <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-                                                                                            <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Finalized Archive</span>
+                                                                                {(() => {
+                                                                                    const isAuditPassed = proposal.usedDataSources?.every(ds => {
+                                                                                        const verifiedVal = verificationResults[proposal.id]?.[ds.id];
+                                                                                        const effectiveValue = verifiedVal !== undefined ? verifiedVal : ds.currentValue;
+                                                                                        return ds.operator === '>' ? effectiveValue > ds.targetValue : effectiveValue < ds.targetValue;
+                                                                                    }) ?? false;
+
+                                                                                    return (
+                                                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                                                                                            <span className="text-[10px] md:text-[11px] font-bold text-white/40 uppercase tracking-widest">Audit Summary</span>
+                                                                                            <div className="flex items-center gap-3">
+                                                                                                <span className="text-[9px] md:text-[10px] text-white/40 uppercase font-black tracking-tighter">Result:</span>
+                                                                                                <span className={`px-4 py-1.5 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest border shadow-lg ${isAuditPassed ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+                                                                                                    {isAuditPassed ? 'PASSED (TRUE)' : 'FAILED (FALSE)'}
+                                                                                                </span>
+                                                                                            </div>
                                                                                         </div>
-                                                                                    </div>
-                                                                                </div>
+                                                                                    );
+                                                                                })()}
                                                                             </div>
                                                                         </div>
                                                                     ) : (
@@ -570,7 +638,7 @@ export default function HistoryPage() {
                                                         <div className="flex items-center gap-4">
                                                             <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/10">
                                                                 <ShieldCheck className="w-3.5 h-3.5 text-white/20" />
-                                                                <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">Executing trades: ALWAYS FALSE</span>
+                                                                <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">Executing trades: NO</span>
                                                             </div>
                                                         </div>
                                                         <div className="text-[9px] md:text-[10px] font-black italic text-white/10 uppercase tracking-widest text-center sm:text-right">
@@ -583,23 +651,26 @@ export default function HistoryPage() {
                                     </div>
                                 )}
                             </div>
-                        )}
-                    </AnimatePresence>
-                </main>
+                        )
+                        }
+                    </AnimatePresence >
+                </main >
 
                 {/* Mobile Pull Tab - Visible when sidebar is closed */}
-                {!isMobileSidebarOpen && (
-                    <button
-                        onClick={() => setIsMobileSidebarOpen(true)}
-                        className="xl:hidden fixed left-0 top-1/2 -translate-y-1/2 z-[130] bg-white/[0.03] hover:bg-white/[0.05] border-y border-r border-white/10 rounded-r-xl p-2.5 text-white/20 hover:text-white/40 transition-all flex items-center justify-center group backdrop-blur-sm"
-                    >
-                        <ChevronRight className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                        <div className="absolute left-full ml-2 px-2 py-1 rounded bg-black/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                            <span className="text-[10px] font-black uppercase tracking-widest">Feed & Agents</span>
-                        </div>
-                    </button>
-                )}
-            </div>
-        </div>
+                {
+                    !isMobileSidebarOpen && (
+                        <button
+                            onClick={() => setIsMobileSidebarOpen(true)}
+                            className="xl:hidden fixed left-0 top-1/2 -translate-y-1/2 z-[130] bg-white/[0.03] hover:bg-white/[0.05] border-y border-r border-white/10 rounded-r-xl p-2.5 text-white/20 hover:text-white/40 transition-all flex items-center justify-center group backdrop-blur-sm"
+                        >
+                            <ChevronRight className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                            <div className="absolute left-full ml-2 px-2 py-1 rounded bg-black/80 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                                <span className="text-[10px] font-black uppercase tracking-widest">Feed & Agents</span>
+                            </div>
+                        </button>
+                    )
+                }
+            </div >
+        </div >
     );
 }

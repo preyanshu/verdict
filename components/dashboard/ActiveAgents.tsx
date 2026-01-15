@@ -5,6 +5,7 @@ import { AgentAvatar } from "./AgentAvatar";
 import { Users, Shield, TrendingUp, TrendingDown, Target, ArrowRight, Wallet, ExternalLink } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { getExplorerAddressUrl } from "@/lib/config";
 
 interface ActiveAgentsProps {
     agents: Agent[];
@@ -64,7 +65,7 @@ export function ActiveAgents({ agents }: ActiveAgentsProps) {
                                                 </span>
                                                 {agent.wallet?.address && (
                                                     <a
-                                                        href={`https://etherscan.io/address/${agent.wallet.address}`}
+                                                        href={getExplorerAddressUrl(agent.wallet.address)}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-[9px] font-mono text-white/50 hover:text-emerald-400 transition-all uppercase flex items-center gap-1.5 bg-white/5 px-1.5 py-0.5 rounded border border-white/5 hover:border-emerald-500/30 group/wallet"

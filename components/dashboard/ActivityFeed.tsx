@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { MessageSquare, Clock, ChevronDown, ChevronUp } from "lucide-react";
+import { MessageSquare, Clock, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Agent } from "@/lib/types";
 import { AgentAvatar } from "./AgentAvatar";
 import { AnimatePresence, motion } from "framer-motion";
+import { getExplorerTxUrl } from "@/lib/config";
 
 export function ActivityFeed({ agents, userTrades = [], filterStrategyId, activeProposalName }: { agents: Agent[], userTrades?: any[], filterStrategyId?: string | null, activeProposalName?: string | null }) {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -141,8 +142,21 @@ export function ActivityFeed({ agents, userTrades = [], filterStrategyId, active
                                             <div className="text-[10px] font-bold text-white/50">
                                                 {new Date(activity.timestamp || 0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </div>
-                                            <div className="text-[10px] font-bold text-white/30 tracking-wider">
-                                                SECURED
+                                            <div className="flex items-center gap-3">
+                                                {activity.txHash && (
+                                                    <a
+                                                        href={getExplorerTxUrl(activity.txHash)}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400/80 hover:text-emerald-400 transition-colors group"
+                                                    >
+                                                        <span className="font-mono">{activity.txHash.slice(0, 6)}...{activity.txHash.slice(-4)}</span>
+                                                        <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                                    </a>
+                                                )}
+                                                <div className="text-[10px] font-bold text-white/30 tracking-wider">
+                                                    SECURED
+                                                </div>
                                             </div>
                                         </div>
                                     </motion.div>

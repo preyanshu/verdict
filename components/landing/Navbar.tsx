@@ -234,7 +234,7 @@ export const Navbar = ({ transparent = true }: NavbarProps) => {
                                                         <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Network</span>
                                                         <span className="flex items-center gap-1.5">
                                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                                            <span className="text-[10px] text-white font-bold uppercase tracking-tight">Quantum EVM</span>
+                                                            <span className="text-[10px] text-white font-bold uppercase tracking-tight">{quantumEVM.name}</span>
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center justify-between">
@@ -469,7 +469,7 @@ export const Navbar = ({ transparent = true }: NavbarProps) => {
                                             <span className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Network</span>
                                             <div className="flex items-center gap-1.5">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                                <span className="text-[10px] text-white font-black uppercase tracking-tight">Quantum EVM</span>
+                                                <span className="text-[10px] text-white font-black uppercase tracking-tight">{quantumEVM.name}</span>
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between">

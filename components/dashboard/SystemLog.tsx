@@ -73,7 +73,7 @@ export function SystemLog({ agents }: SystemLogProps) {
         return parts.map((part, i) => {
             if (part.match(urlRegex)) {
                 // Determine if it's an etherscan link
-                const isExplorer = part.includes('etherscan.io') || part.includes('solscan.io') || part.includes('explorer');
+                const isExplorer = part.includes('etherscan.io') || part.includes('solscan.io') || part.includes('mantlescan.xyz') || part.includes('explorer');
                 const label = isExplorer ? 'VIEW TRANSACTION' : 'OPEN LINK';
 
                 return (

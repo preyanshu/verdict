@@ -24,6 +24,7 @@ export interface TokenInfo {
     history: Array<{ price: number; timestamp: number }>;
     twap: number;
     twapHistory?: Array<{ twap: number; timestamp: number }>;
+    priceVUSD?: number; // Actual vUSD price per token for swaps
 }
 
 // Market state with multiple strategies
@@ -102,4 +103,32 @@ export interface TradeDecision {
     quantity: number;
     price: number;
     reasoning: string;
+}
+
+export interface CustomProposal {
+    name: string;
+    description: string;
+    evaluationLogic: string;
+    mathematicalLogic: string;
+    usedDataSources: Array<{
+        id: number;
+        currentValue: number;
+        targetValue: number;
+        operator: string;
+    }>;
+    resolutionDeadline?: number;
+    initialLiquidity?: number;
+}
+
+export interface InjectedProposalResponse {
+    success: boolean;
+    message?: string;
+    proposal?: {
+        id: string;
+        name: string;
+        yesToken: string;
+        poolId: string;
+        txHash: string;
+    };
+    error?: string;
 }

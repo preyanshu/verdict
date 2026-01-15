@@ -1,6 +1,7 @@
-import { MarketState, MarketStrategy, Agent, LogEntry } from "./types";
+import { MarketState, MarketStrategy, Agent, LogEntry, CustomProposal, InjectedProposalResponse } from "./types";
+import { API_CONFIG } from "./config";
 
-const BASE_URL = "http://localhost:3000";
+const BASE_URL = API_CONFIG.baseUrl;
 
 export const api = {
     // Market Data
@@ -60,5 +61,18 @@ export const api = {
     async executeTrades(): Promise<void> {
         const response = await fetch(`${BASE_URL}/api/trade/execute`, { method: "POST" });
         if (!response.ok) throw new Error("Failed to execute trades");
+    },
+
+    // Custom Proposal Injection
+    async injectProposal(proposal: CustomProposal): Promise<InjectedProposalResponse> {
+        const response = await fetch(`${BASE_URL}/api/proposal/inject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(proposal)
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Failed to inject proposal");
+        return data;
     }
 };

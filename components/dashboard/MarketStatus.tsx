@@ -8,23 +8,28 @@ interface MarketStatusProps {
     agentCount: number;
     now: number;
     forceExecuting?: boolean;
+    localStartTime?: number | null;
 }
 
-export function MarketStatus({ state, agentCount, now, forceExecuting }: MarketStatusProps) {
-    const timeLeft = Math.max(0, state.roundEndTime - now);
-    const m = Math.floor(timeLeft / (1000 * 60));
-    const s = Math.floor((timeLeft % (1000 * 60)) / 1000);
+export function MarketStatus({ state, agentCount, now, forceExecuting, localStartTime }: MarketStatusProps) {
+    const startTime = localStartTime || state.roundStartTime;
+    const computedEndTime = startTime + state.roundDuration;
+    // Clamp the time left so it doesn't exceed the round duration (handling pre-round buffer)
+    // And ensure it never goes below 0
+    const timeLeft = Math.max(0, computedEndTime - now);
+    const displayTime = Math.min(state.roundDuration, timeLeft);
+
+    const m = Math.floor(displayTime / (1000 * 60));
+    const s = Math.floor((displayTime % (1000 * 60)) / 1000);
+
+    const formatTime = (minutes: number, seconds: number) => {
+        return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+    };
 
     const stats = [
         {
             label: state.isExecutingTrades ? "Round Time" : "Round Duration",
-            value: state.isExecutingTrades
-                ? (m > 0 ? `${m}m ${s}s` : `${s}s`)
-                : (() => {
-                    const dm = Math.floor(state.roundDuration / (1000 * 60));
-                    const ds = Math.floor((state.roundDuration % (1000 * 60)) / 1000);
-                    return dm > 0 ? `${dm}m ${ds}s` : `${ds}s`;
-                })(),
+            value: formatTime(m, s),
             icon: Clock,
             active: true,
             iconColor: "text-emerald-500"

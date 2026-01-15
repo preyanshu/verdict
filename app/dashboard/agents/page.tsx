@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AgentAvatar } from "@/components/dashboard/AgentAvatar";
 import { TRUSTED_DATA_SOURCES } from "@/lib/data-sources";
 import { api } from "@/lib/api";
+import { getExplorerAddressUrl, getExplorerTxUrl } from "@/lib/config";
 import {
     Slash,
     Loader2,
@@ -246,7 +247,7 @@ export default function AgentsPage() {
                                                                 </div>
                                                                 {agent.wallet?.address && (
                                                                     <a
-                                                                        href={`https://etherscan.io/address/${agent.wallet.address}`}
+                                                                        href={getExplorerAddressUrl(agent.wallet.address)}
                                                                         target="_blank"
                                                                         rel="noopener noreferrer"
                                                                         className="flex items-center gap-1.5 mt-2 group/wallet"
@@ -368,9 +369,15 @@ export default function AgentsPage() {
                                                                                     <span>Qty: {trade.quantity.toFixed(2)}</span>
                                                                                 </div>
                                                                                 {trade.txHash && (
-                                                                                    <div className="text-[8px] font-mono text-emerald-500/50 mt-1 truncate">
-                                                                                        TX: {trade.txHash}
-                                                                                    </div>
+                                                                                    <a
+                                                                                        href={getExplorerTxUrl(trade.txHash)}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="flex items-center gap-1.5 text-[8px] font-mono text-emerald-500/50 hover:text-emerald-400 transition-colors mt-1 group"
+                                                                                    >
+                                                                                        <span className="truncate">TX: {trade.txHash.slice(0, 8)}...{trade.txHash.slice(-6)}</span>
+                                                                                        <ExternalLink className="w-2.5 h-2.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+                                                                                    </a>
                                                                                 )}
                                                                             </div>
                                                                         ))

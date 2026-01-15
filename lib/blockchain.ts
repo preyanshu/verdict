@@ -1,28 +1,35 @@
-import { createPublicClient, http, formatUnits, parseAbi, parseUnits } from 'viem';
-import { mainnet } from 'viem/chains';
+import { createPublicClient, http, formatUnits, parseAbi, parseUnits, parseGwei } from 'viem';
 import abiData from './abi.json';
+import { NETWORK_CONFIG, CONTRACT_ADDRESSES, GAS_CONFIG } from './config';
 
-export const ROUTER_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+// Re-export router address for backward compatibility
+export const ROUTER_ADDRESS = CONTRACT_ADDRESSES.router;
 
-// Quantum EVM chain definition
+// Chain definition built from config
 export const quantumEVM = {
-    id: 31337, // Localhost/Hardhat default
-    name: 'Quantum EVM',
-    network: 'quantum-evm',
+    id: NETWORK_CONFIG.chainId,
+    name: NETWORK_CONFIG.chainName,
+    network: NETWORK_CONFIG.networkSlug,
     nativeCurrency: {
-        decimals: 18,
-        name: 'Quantum',
-        symbol: 'QNTM',
+        decimals: NETWORK_CONFIG.nativeCurrency.decimals,
+        name: NETWORK_CONFIG.nativeCurrency.name,
+        symbol: NETWORK_CONFIG.nativeCurrency.symbol,
     },
     rpcUrls: {
-        public: { http: ['http://127.0.0.1:8545'] },
-        default: { http: ['http://127.0.0.1:8545'] },
+        public: { http: [NETWORK_CONFIG.rpcUrl] },
+        default: { http: [NETWORK_CONFIG.rpcUrl] },
+    },
+    blockExplorers: {
+        default: {
+            name: NETWORK_CONFIG.explorerName,
+            url: NETWORK_CONFIG.explorerUrl,
+        },
     },
 } as const;
 
 export const publicClient = createPublicClient({
     chain: quantumEVM,
-    transport: http(),
+    transport: http(NETWORK_CONFIG.rpcUrl),
 });
 
 export const verdictAbi = abiData;
@@ -46,14 +53,15 @@ export const getVUSDCBalance = async (address: string): Promise<string> => {
 export const claimFaucet = async (walletClient: any): Promise<`0x${string}`> => {
     const [address] = await walletClient.getAddresses();
 
-    const { request } = await publicClient.simulateContract({
+    // Use direct writeContract with explicit gas price from config
+    return await walletClient.writeContract({
         account: address,
         address: ROUTER_ADDRESS as `0x${string}`,
         abi: verdictAbi,
         functionName: 'userFaucet',
+        chain: quantumEVM,
+        gasPrice: parseGwei(GAS_CONFIG.gasPriceGwei),
     });
-
-    return await walletClient.writeContract(request);
 };
 
 export const getVUSDCTokenAddress = async (): Promise<`0x${string}`> => {
@@ -93,20 +101,23 @@ export const executeSwap = async (
     walletClient: any,
     proposalId: string,
     tokenIn: string,
-    amountIn: string,
+    amountIn: string | bigint,
     minAmountOut: string
 ): Promise<`0x${string}`> => {
     const [address] = await walletClient.getAddresses();
 
-    const { request } = await publicClient.simulateContract({
+    const finalAmountIn = typeof amountIn === 'bigint' ? amountIn : parseUnits(amountIn, 18);
+
+    // Use direct writeContract with explicit gas price from config
+    return await walletClient.writeContract({
         account: address,
         address: ROUTER_ADDRESS as `0x${string}`,
         abi: verdictAbi,
         functionName: 'swap',
-        args: [proposalId, tokenIn as `0x${string}`, parseUnits(amountIn, 18), parseUnits(minAmountOut, 18)],
+        args: [proposalId, tokenIn as `0x${string}`, finalAmountIn, parseUnits(minAmountOut, 18)],
+        chain: quantumEVM,
+        gasPrice: parseGwei(GAS_CONFIG.gasPriceGwei),
     });
-
-    return await walletClient.writeContract(request);
 };
 
 export const getYESBalance = async (proposalId: string, address: string): Promise<string> => {
@@ -122,6 +133,21 @@ export const getYESBalance = async (proposalId: string, address: string): Promis
     } catch (error) {
         console.error('Error fetching YES balance:', error);
         return '0.00';
+    }
+};
+
+export const getRawYESBalance = async (proposalId: string, address: string): Promise<bigint> => {
+    try {
+        const balance = await publicClient.readContract({
+            address: ROUTER_ADDRESS as `0x${string}`,
+            abi: verdictAbi,
+            functionName: 'getYESBalance',
+            args: [proposalId, address as `0x${string}`],
+        });
+        return balance as bigint;
+    } catch (error) {
+        console.error('Error fetching raw YES balance:', error);
+        return BigInt(0);
     }
 };
 
@@ -153,13 +179,14 @@ export const approveToken = async (
 ): Promise<`0x${string}`> => {
     const [address] = await walletClient.getAddresses();
 
-    const { request } = await publicClient.simulateContract({
+    // Use direct writeContract with explicit gas price from config
+    return await walletClient.writeContract({
         account: address,
         address: tokenAddress as `0x${string}`,
         abi: erc20Abi,
         functionName: 'approve',
         args: [spender as `0x${string}`, amount],
+        chain: quantumEVM,
+        gasPrice: parseGwei(GAS_CONFIG.gasPriceGwei),
     });
-
-    return await walletClient.writeContract(request);
 };

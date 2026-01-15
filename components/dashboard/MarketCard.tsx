@@ -67,7 +67,7 @@ export function MarketCard({ strategy, onClick }: MarketCardProps) {
                     </div>
                     <div className="flex gap-2">
                         <div className="h-8 sm:h-10 px-4 sm:px-6 rounded-lg bg-emerald-500/20 text-emerald-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-emerald-500/30 flex items-center justify-center">
-                            YES ${yesPrice.toFixed(2)}
+                            YES {(yesPrice * 100).toFixed(0)}%
                         </div>
                     </div>
                 </div>
@@ -80,7 +80,7 @@ export function MarketCard({ strategy, onClick }: MarketCardProps) {
                     </div>
                     <div className="flex gap-2">
                         <div className="h-8 sm:h-10 px-4 sm:px-6 rounded-lg bg-red-500/20 text-red-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider border border-red-500/30 flex items-center justify-center">
-                            NO ${noPrice.toFixed(2)}
+                            NO {(noPrice * 100).toFixed(0)}%
                         </div>
                     </div>
                 </div>

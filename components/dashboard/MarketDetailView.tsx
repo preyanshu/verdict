@@ -56,6 +56,9 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
     const currentToken = activeTab === 'yes' ? strategy.yesToken : strategy.noToken;
     const yesPrice = strategy.yesToken.history[strategy.yesToken.history.length - 1]?.price ?? 0.5;
     const noPrice = strategy.noToken.history[strategy.noToken.history.length - 1]?.price ?? 0.5;
+    // Actual vUSD price per token for swaps (from API)
+    const yesPriceVUSD = strategy.yesToken.priceVUSD;
+    const noPriceVUSD = strategy.noToken.priceVUSD;
 
     // Initial Chart Creation
     useEffect(() => {
@@ -291,22 +294,29 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
 
             setError("Executing transaction...");
 
-            // Min Out calculation: 0.5% slippage
-            const minOut = (Number(quoteAmount) * 0.995).toString();
+            // Removed slippage guard - setting minAmountOut to 0
+            const minOut = "0";
 
-            await executeSwap(walletClient, strategy.id, tokenIn, swapAmount, minOut);
+            const txHash = await executeSwap(walletClient, strategy.id, tokenIn, swapAmount, minOut);
 
-            // Push trade to UI
-            if (onTradeSuccess) {
+            // Wait for transaction confirmation
+            setError("Confirming transaction...");
+            const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+            // Only add trade to UI after confirmation
+            if (receipt.status === 'success' && onTradeSuccess) {
                 onTradeSuccess({
                     type: isReversed ? 'sell' : 'buy',
                     strategyId: strategy.id,
                     tokenType: 'yes',
-                    price: yesPrice,
+                    price: yesPriceVUSD ?? yesPrice,
                     quantity: isReversed ? Number(swapAmount) : Number(quoteAmount),
                     timestamp: Date.now(),
-                    reasoning: `Manual execution via Protocol Interface.`
+                    reasoning: `Manual execution via Protocol Interface.`,
+                    txHash: txHash
                 });
+            } else if (receipt.status === 'reverted') {
+                throw new Error("Transaction reverted on-chain");
             }
 
             setSwapAmount("");
@@ -369,12 +379,18 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
 
                     <div className="grid grid-cols-2 gap-3 sm:gap-4 shrink-0">
                         <div className="px-4 sm:px-6 py-3 sm:py-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                            <p className="text-[9px] sm:text-[10px] text-emerald-400 font-bold uppercase tracking-[0.2em] mb-1">YES Price</p>
-                            <p className="text-lg sm:text-2xl font-black text-white">${yesPrice.toFixed(2)}</p>
+                            <p className="text-[9px] sm:text-[10px] text-emerald-400 font-bold uppercase tracking-[0.2em] mb-1">YES Prob</p>
+                            <p className="text-lg sm:text-2xl font-black text-white">{(yesPrice * 100).toFixed(0)}%</p>
+                            {yesPriceVUSD !== undefined && (
+                                <p className="text-[9px] text-white/40 mt-1">Swap: ${yesPriceVUSD.toFixed(2)}</p>
+                            )}
                         </div>
                         <div className="px-4 sm:px-6 py-3 sm:py-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-center">
-                            <p className="text-[9px] sm:text-[10px] text-red-400 font-bold uppercase tracking-[0.2em] mb-1">NO Price</p>
-                            <p className="text-lg sm:text-2xl font-black text-white">${noPrice.toFixed(2)}</p>
+                            <p className="text-[9px] sm:text-[10px] text-red-400 font-bold uppercase tracking-[0.2em] mb-1">NO Prob</p>
+                            <p className="text-lg sm:text-2xl font-black text-white">{(noPrice * 100).toFixed(0)}%</p>
+                            {noPriceVUSD !== undefined && (
+                                <p className="text-[9px] text-white/40 mt-1">Swap: ${noPriceVUSD.toFixed(2)}</p>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -543,7 +559,13 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
                                             {isReversed ? "You Receive" : "You Buy"}
                                         </span>
                                         <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest whitespace-nowrap ml-2">
-                                            Price: ${yesPrice.toFixed(2)}
+                                            {/* Show real vUSD price from API, fallback to quote calculation, then TWAP */}
+                                            {yesPriceVUSD !== undefined
+                                                ? `Price: $${yesPriceVUSD.toFixed(2)}`
+                                                : swapAmount && parseFloat(quoteAmount) > 0 
+                                                    ? `Rate: $${(parseFloat(swapAmount) / parseFloat(quoteAmount)).toFixed(2)}/token`
+                                                    : `TWAP: $${yesPrice.toFixed(2)}`
+                                            }
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-4 min-w-0">
@@ -562,10 +584,7 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
                             </div>
 
                             <div className="space-y-3 px-2">
-                                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
-                                    <span className="text-white/20">Slippage Tolerance</span>
-                                    <span className="text-white/60">0.5%</span>
-                                </div>
+
                                 <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
                                     <span className="text-white/20">Execution Fee</span>
                                     <span className="text-emerald-500">Free</span>
@@ -621,14 +640,24 @@ export function MarketDetailView({ strategy, onBack, isMarketActive = false, onT
 
                     <div className="bg-white/[0.02] border border-white/5 p-6 rounded-3xl">
                         <h4 className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em] mb-4">Global Sentiment</h4>
-                        <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden flex">
-                            <div className="h-full bg-emerald-500/40" style={{ width: '65%' }} />
-                            <div className="h-full bg-red-500/40" style={{ width: '35%' }} />
-                        </div>
-                        <div className="flex justify-between mt-3 text-[10px] font-bold uppercase tracking-widest">
-                            <span className="text-emerald-400/60">65% BULLISH</span>
-                            <span className="text-red-400/60">35% BEARISH</span>
-                        </div>
+                        {(() => {
+                            // Normalize YES/NO probabilities to sum to 100%
+                            const total = yesPrice + noPrice;
+                            const bullishPct = total > 0 ? Math.round((yesPrice / total) * 100) : 50;
+                            const bearishPct = 100 - bullishPct;
+                            return (
+                                <>
+                                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden flex">
+                                        <div className="h-full bg-emerald-500/40" style={{ width: `${bullishPct}%` }} />
+                                        <div className="h-full bg-red-500/40" style={{ width: `${bearishPct}%` }} />
+                                    </div>
+                                    <div className="flex justify-between mt-3 text-[10px] font-bold uppercase tracking-widest">
+                                        <span className="text-emerald-400/60">{bullishPct}% BULLISH</span>
+                                        <span className="text-red-400/60">{bearishPct}% BEARISH</span>
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>

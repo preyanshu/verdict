@@ -13,6 +13,7 @@ interface CreateProposalModalProps {
     onLaunchSuccess?: () => void;
     activeAgentsCount: number;
     currentProposalsCount: number;
+    roundStartTime?: number;
     roundEndTime?: number;
     roundDuration?: number;
     isExecutingTrades?: boolean;
@@ -25,6 +26,7 @@ export const CreateProposalModal = ({
     onLaunchSuccess,
     activeAgentsCount,
     currentProposalsCount,
+    roundStartTime,
     roundEndTime,
     roundDuration,
     isExecutingTrades,
@@ -49,6 +51,7 @@ export const CreateProposalModal = ({
     // Async States
     const [isExecuting, setIsExecuting] = useState(false);
     const [executionComplete, setExecutionComplete] = useState(false);
+    const [executionError, setExecutionError] = useState<string | null>(null);
 
     const TOTAL_STEPS = 3;
 
@@ -61,6 +64,7 @@ export const CreateProposalModal = ({
             setConditions([{ source: '', operator: '>', value: '', connector: null }]);
             setIsExecuting(false);
             setExecutionComplete(false);
+            setExecutionError(null);
         }, 300);
     };
 
@@ -70,7 +74,7 @@ export const CreateProposalModal = ({
         reset();
     };
 
-    const [executionPhase, setExecutionPhase] = useState<'initializing' | 'synthesizing' | 'starting' | 'executing'>('initializing');
+    const [executionPhase, setExecutionPhase] = useState<'initializing' | 'synthesizing' | 'injecting' | 'starting' | 'executing'>('initializing');
 
     const executeLaunch = async () => {
         setIsExecuting(true);
@@ -80,27 +84,111 @@ export const CreateProposalModal = ({
             // 1. Synthesize Agents if they don't exist
             if (activeAgentsCount === 0) {
                 setExecutionPhase('synthesizing');
-                await Promise.all([api.initAgents(), wait(2000)]);
+                await api.initAgents(); // Must succeed
+                await wait(2000);       // Visual pacing
             }
 
-            // 2. Transmitting the start request
+            // 2. Inject Custom Proposal if user has designed one
+            if (name && selectedSources.length > 0) {
+                setExecutionPhase('injecting');
+                
+                // Build the proposal payload
+                const customProposal = buildProposalPayload();
+                
+                await api.injectProposal(customProposal);
+                await wait(1500); // Visual pacing
+            }
+
+            // 3. Transmitting the start request
             setExecutionPhase('starting');
 
             // Only proceed to 'executing' state if the API call succeeds
-            await api.startTradeLoop();
+            // Add minimum delay to prevent flashing state
+            // We run these logically in parallel to minimize total wait, 
+            // but Promise.all ensures we only proceed if api.startTradeLoop() does NOT throw.
+            await Promise.all([
+                api.startTradeLoop(),
+                wait(1500)
+            ]);
+
+            // If we are here, BOTH (or all required) calls succeeded.
 
             // Briefly show success state before closing
             setExecutionPhase('executing');
             setExecutionComplete(true);
 
             onLaunchSuccess?.();
-            await wait(2000); // Allow user to see the "Round Active" checkmark
+            await wait(1500); // Allow user to see the "Round Active" checkmark
             handleClose();
         } catch (error) {
             console.error("Failed to launch market:", error);
+            const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+            setExecutionError(errorMessage);
             setIsExecuting(false);
             setExecutionPhase('initializing');
+            
+            // Auto-clear error after 5 seconds
+            setTimeout(() => setExecutionError(null), 5000);
         }
+    };
+
+    // Helper function to build proposal payload from user input
+    const buildProposalPayload = () => {
+        // Generate description from conditions
+        const conditionText = conditions
+            .filter(c => c.source && c.value)
+            .map((c, i) => {
+                const source = selectedSources.find(s => s.ticker === c.source);
+                const text = `${source?.name || c.source} (${c.source}) ${c.operator} ${c.value}`;
+                return i < conditions.length - 1 ? `${text} ${c.connector || 'AND'}` : text;
+            })
+            .join(' ');
+
+        const description = conditionText || `${name} will be evaluated based on selected data sources`;
+
+        // Build evaluation logic (human readable)
+        const evaluationLogic = conditions
+            .filter(c => c.source && c.value)
+            .map((c, i) => {
+                const text = `${c.source} ${c.operator} ${c.value}`;
+                return i < conditions.length - 1 ? `${text} ${c.connector || 'AND'}` : text;
+            })
+            .join(' ');
+
+        // Build mathematical logic (machine readable)
+        const mathematicalLogic = conditions
+            .filter(c => c.source && c.value)
+            .map((c, i) => {
+                const text = `price ${c.operator} ${c.value}`;
+                return i < conditions.length - 1 ? `${text} ${c.connector?.toLowerCase() || 'and'}` : text;
+            })
+            .join(' ');
+
+        // Map selected sources to usedDataSources format
+        const usedDataSources = selectedSources.map(source => {
+            // Find matching condition for this source
+            const condition = conditions.find(c => c.source === source.ticker);
+            
+            return {
+                id: source.id,
+                currentValue: parseFloat(source.price),
+                targetValue: condition?.value ? parseFloat(condition.value) : parseFloat(source.price) * 1.1,
+                operator: condition?.operator || '>'
+            };
+        });
+
+        // Default resolution deadline: 24 hours from now
+        const resolutionDeadline = Date.now() + (24 * 60 * 60 * 1000);
+
+        return {
+            name,
+            description,
+            evaluationLogic: evaluationLogic || `${name} evaluation`,
+            mathematicalLogic: mathematicalLogic || 'price > 0',
+            usedDataSources,
+            resolutionDeadline,
+            initialLiquidity: 2000
+        };
     };
 
     return (
@@ -146,16 +234,20 @@ export const CreateProposalModal = ({
                                                 <h3 className="text-sm font-bold text-white tracking-widest uppercase">
                                                     {executionPhase === 'synthesizing'
                                                         ? 'Synthesizing Agents'
-                                                        : executionPhase === 'starting'
-                                                            ? 'Connecting to Market'
-                                                            : 'Initializing Round'}
+                                                        : executionPhase === 'injecting'
+                                                            ? 'Injecting Custom Strategy'
+                                                            : executionPhase === 'starting'
+                                                                ? 'Connecting to Market'
+                                                                : 'Initializing Round'}
                                                 </h3>
                                                 <p className="text-[9px] text-white/40 uppercase tracking-[0.2em]">
                                                     {executionPhase === 'synthesizing'
                                                         ? 'Generating specialized behaviors...'
-                                                        : executionPhase === 'starting'
-                                                            ? 'Synchronizing directives...'
-                                                            : 'Broadcasting signals...'}
+                                                        : executionPhase === 'injecting'
+                                                            ? 'Deploying custom proposal on-chain...'
+                                                            : executionPhase === 'starting'
+                                                                ? 'Synchronizing directives...'
+                                                                : 'Broadcasting signals...'}
                                                 </p>
                                             </div>
                                         </div>
@@ -189,8 +281,9 @@ export const CreateProposalModal = ({
                                             {isExecutingTrades ? "Round Time" : "Round Duration"}
                                         </p>
                                         <p className="text-xl font-bold text-emerald-400 tabular-nums uppercase">
-                                            {isExecutingTrades && roundEndTime && now ? (() => {
-                                                const diff = Math.max(0, roundEndTime - now);
+                                            {isExecutingTrades && roundStartTime && roundDuration && now ? (() => {
+                                                const computedEndTime = roundStartTime + roundDuration;
+                                                const diff = Math.min(roundDuration, Math.max(0, computedEndTime - now));
                                                 const m = Math.floor(diff / 60000);
                                                 const s = Math.floor((diff % 60000) / 1000);
                                                 return m > 0 ? `${m}m ${s}s` : `${s}s`;
@@ -212,6 +305,30 @@ export const CreateProposalModal = ({
                                         Confirming enters your proposal into the evaluation round. Agents start assessing strategic viability immediately.
                                     </p>
                                 </div>
+
+                                {/* Error Display */}
+                                {executionError && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0 }}
+                                        className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3 mb-6"
+                                    >
+                                        <div className="shrink-0 pt-0.5">
+                                            <X className="w-4 h-4 text-red-400" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">Execution Failed</p>
+                                            <p className="text-[11px] text-red-300/80">{executionError}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setExecutionError(null)}
+                                            className="shrink-0 p-1 hover:bg-red-500/10 rounded transition-colors"
+                                        >
+                                            <X className="w-3 h-3 text-red-400/60 hover:text-red-400" />
+                                        </button>
+                                    </motion.div>
+                                )}
 
                                 {/* Injected Proposal Review (High Fidelity Reference) */}
                                 {name && (
