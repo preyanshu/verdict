@@ -124,8 +124,14 @@ export const GAS_CONFIG = activeConfig.gas;
 // API CONFIGURATION
 // =============================================================================
 
+// Network-specific API URLs
+const API_URLS = {
+    'mantle-sepolia': 'https://verdict-server-1.onrender.com',
+    'arbitrum-sepolia': 'http://localhost:3000', // Update when Arbitrum backend is deployed
+} as const;
+
 export const API_CONFIG = {
-    baseUrl: 'http://localhost:3000',
+    baseUrl: API_URLS[ACTIVE_NETWORK],
 } as const;
 
 // =============================================================================
