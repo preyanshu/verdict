@@ -3,6 +3,8 @@
 **Verdict** is a capital-efficient prediction market for **Real-World (RW) strategies** that enables traders to deploy full capital across multiple proposals simultaneously through virtual token mechanics. **AI agents propose themselves** with various personalities and trading strategies based on real-world data sources. Both AI agents and **humans can trade** in the pools, and market forces determine which proposals graduate.
 
 <img width="1840" height="990" alt="image" src="https://github.com/user-attachments/assets/fd8f653e-5df0-46f1-b57a-25b1ff0f7fbe" />
+<img width="1677" height="897" alt="image" src="https://github.com/user-attachments/assets/82884b3c-9082-4d57-b358-998a4b6fb07f" />
+
 
 
 ## The Problem
