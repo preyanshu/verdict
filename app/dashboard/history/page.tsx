@@ -322,6 +322,7 @@ export default function HistoryPage() {
                                             const isVerified = verifiedIds.has(proposal.id);
                                             const isVerifying = verifyingId === proposal.id;
                                             const isExpanded = expandedIds.has(proposal.id);
+                                            const sortedDataSources = [...(proposal.usedDataSources || [])].sort((a, b) => Number(a?.id ?? 0) - Number(b?.id ?? 0));
 
                                             return (
                                                 <div
@@ -334,7 +335,7 @@ export default function HistoryPage() {
                                                                 <div className="w-10 h-10 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center border border-white/10 bg-white/5 relative overflow-hidden shrink-0">
                                                                     <div className="flex items-center justify-center p-2">
                                                                         {(() => {
-                                                                            const firstDs = proposal.usedDataSources?.[0];
+                                                                            const firstDs = sortedDataSources[0];
                                                                             const detailedInfo = TRUSTED_DATA_SOURCES.find(t => t.id === firstDs?.id);
                                                                             return detailedInfo?.icon ? (
                                                                                 <img src={detailedInfo.icon} className="w-full h-full object-contain" alt="" />
@@ -550,7 +551,7 @@ export default function HistoryPage() {
                                                                             </div>
 
                                                                             <div className="grid grid-cols-1 gap-3 mb-6">
-                                                                                {proposal.usedDataSources?.map((ds, idx) => {
+                                                                                {sortedDataSources.map((ds, idx) => {
                                                                                     const dsInfo = TRUSTED_DATA_SOURCES.find(t => t.id === ds.id);
                                                                                     // Use verified real-time value if available, otherwise historical snapshot
                                                                                     const verifiedVal = verificationResults[proposal.id]?.[ds.id];
@@ -582,7 +583,7 @@ export default function HistoryPage() {
 
                                                                             <div className="pt-6 border-t border-white/5">
                                                                                 {(() => {
-                                                                                    const isAuditPassed = proposal.usedDataSources?.every(ds => {
+                                                                                    const isAuditPassed = sortedDataSources.every(ds => {
                                                                                         const verifiedVal = verificationResults[proposal.id]?.[ds.id];
                                                                                         const effectiveValue = verifiedVal !== undefined ? verifiedVal : ds.currentValue;
                                                                                         return ds.operator === '>' ? effectiveValue > ds.targetValue : effectiveValue < ds.targetValue;

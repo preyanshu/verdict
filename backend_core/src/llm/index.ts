@@ -661,11 +661,11 @@ Total: ${totalDataSources} data sources available.
 Generate exactly ${count} unique RWA strategies. Respond ONLY with a JSON array in this exact format:
 [
   {
-    "name": "<Strategy Name>",
+    "name": "<Strategy Name — MUST include the ticker(s) or keywords from the chosen data source(s), e.g. SPY Above 700 or BTC vs 100k. Do NOT use random or generic words.>",
     "description": "<Professional, detailed description with clear reasoning about market conditions, trends, and why this prediction matters. Should be 2-4 sentences explaining the context and significance.>",
     "timeLimitDays": <number (e.g. 2, 5, 30)>,
     "evaluationLogic": "<Logic string with Source IDs and operators>",
-    "mathematicalLogic": "<Formula like 'asset_price > target_value'>",
+    "mathematicalLogic": "<Slightly complex formula: use threshold, percentage change, or multi-asset expression, e.g. (price/target - 1) > 0.05 or min(SPY, QQQ) > level. Avoid trivial asset > value only.>",
     "usedDataSources": [
       {
         "id": <number (The ID from the list above)>,
@@ -680,6 +680,8 @@ Generate exactly ${count} unique RWA strategies. Respond ONLY with a JSON array 
 CRITICAL RULES:
 - Use real tickers and their IDs from the provided list.
 - Ensure time limits are varied (from 2 days up to 60 days).
+- Strategy name MUST include the ticker(s) or keywords of the data source(s) you use (e.g. SPY, BTC, WTI) — never random or generic titles.
+- mathematicalLogic MUST be a non-trivial formula (threshold, percentage, multi-asset), not just price > value.
 - Ensure all ${count} strategies are unique.`;
 
   try {

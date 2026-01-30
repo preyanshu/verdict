@@ -47,7 +47,7 @@ const MANTLE_SEPOLIA_NETWORK: NetworkConfig = {
     chainId: 5003,
     chainName: 'Mantle Sepolia',
     networkSlug: 'mantle-sepolia',
-    rpcUrl: 'https://rpc.sepolia.mantle.xyz/',
+    rpcUrl: 'https://mantle-sepolia.g.alchemy.com/v2/4IPIoe0y3qXgYBrKNZZ44',
     explorerName: 'Mantle Sepolia Explorer',
     explorerUrl: 'https://sepolia.mantlescan.xyz/',
     nativeCurrency: {
