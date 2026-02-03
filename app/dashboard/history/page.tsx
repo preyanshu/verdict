@@ -25,6 +25,128 @@ import {
 } from "lucide-react";
 import { TRUSTED_DATA_SOURCES } from "@/lib/data-sources";
 import { motion, AnimatePresence } from "framer-motion";
+
+/**
+ * Generate human-readable mathematical logic using real asset tickers from data sources
+ */
+const generateMathLogicDisplay = (
+    dataSources: Array<{ id: number; targetValue: number; operator: string }> | undefined,
+    fallbackLogic?: string
+): string => {
+    if (!dataSources || dataSources.length === 0) {
+        return fallbackLogic || '// Logic finalized on-chain';
+    }
+    
+    return dataSources.map(ds => {
+        const source = TRUSTED_DATA_SOURCES.find(s => s.id === ds.id);
+        const ticker = source?.ticker || 'ASSET';
+        const targetDisplay = typeof ds.targetValue === 'number' 
+            ? (ds.targetValue % 1 === 0 ? ds.targetValue.toString() : ds.targetValue.toFixed(2))
+            : ds.targetValue;
+        return `${ticker} ${ds.operator} ${targetDisplay}`;
+    }).join(' AND ');
+};
+
+/**
+ * Get the appropriate icon for a proposal based on its name and data sources
+ * Intelligently matches proposal names to relevant asset icons
+ */
+const getProposalIcon = (
+    proposalName: string,
+    dataSources: Array<{ id: number }> | undefined
+): string | null => {
+    // First try to get icon from data sources
+    if (dataSources && dataSources.length > 0) {
+        const firstDs = dataSources[0];
+        const detailedInfo = TRUSTED_DATA_SOURCES.find(t => t.id === firstDs?.id);
+        if (detailedInfo?.icon) {
+            return detailedInfo.icon;
+        }
+    }
+    
+    // If no data source icon, infer from proposal name
+    const nameLower = proposalName.toLowerCase();
+    
+    // S&P 500 related
+    if (nameLower.includes('s&p 500') || nameLower.includes('spy')) {
+        const spy = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'SPY');
+        if (spy?.icon) return spy.icon;
+    }
+    
+    // Vanguard S&P 500
+    if (nameLower.includes('vanguard') && nameLower.includes('500')) {
+        const voo = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'VOO');
+        if (voo?.icon) return voo.icon;
+    }
+    
+    // Bitcoin/Crypto related
+    if (nameLower.includes('bitcoin') || nameLower.includes('btc') || nameLower.includes('crypto')) {
+        const ibit = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'IBIT');
+        if (ibit?.icon) return ibit.icon;
+    }
+    
+    // QQQ/Nasdaq related
+    if (nameLower.includes('qqq') || nameLower.includes('nasdaq') || nameLower.includes('tech')) {
+        const qqq = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'QQQ');
+        if (qqq?.icon) return qqq.icon;
+    }
+    
+    // VTI/Total Market related
+    if (nameLower.includes('vti') || nameLower.includes('total market') || nameLower.includes('total stock')) {
+        const vti = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'VTI');
+        if (vti?.icon) return vti.icon;
+    }
+    
+    // Oil/WTI related
+    if (nameLower.includes('oil') || nameLower.includes('wti') || nameLower.includes('crude')) {
+        const wti = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'WTI');
+        if (wti?.icon) return wti.icon;
+    }
+    
+    // Natural Gas related
+    if (nameLower.includes('natural gas') || nameLower.includes('gas')) {
+        const ng = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'NG');
+        if (ng?.icon) return ng.icon;
+    }
+    
+    // Treasury/Bond related
+    if (nameLower.includes('treasury') || nameLower.includes('bond') || nameLower.includes('tlt')) {
+        const tlt = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'TLT');
+        if (tlt?.icon) return tlt.icon;
+    }
+    
+    // Market Divergence - use QQQ as default for divergence strategies
+    if (nameLower.includes('divergence')) {
+        const qqq = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'QQQ');
+        if (qqq?.icon) return qqq.icon;
+    }
+    
+    // Rally strategies - use SPY as default
+    if (nameLower.includes('rally')) {
+        const spy = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'SPY');
+        if (spy?.icon) return spy.icon;
+    }
+    
+    // Energy sector
+    if (nameLower.includes('energy')) {
+        const wti = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'WTI');
+        if (wti?.icon) return wti.icon;
+    }
+    
+    // Currency related
+    if (nameLower.includes('currency') || nameLower.includes('dollar') || nameLower.includes('cad') || nameLower.includes('aud')) {
+        const cad = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'CAD');
+        if (cad?.icon) return cad.icon;
+    }
+    
+    // Ethereum related
+    if (nameLower.includes('ethereum') || nameLower.includes('eth')) {
+        const etha = TRUSTED_DATA_SOURCES.find(s => s.ticker === 'ETHA');
+        if (etha?.icon) return etha.icon;
+    }
+    
+    return null;
+};
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { getYESBalance, getRawYESBalance, getYesTokenAddress, getAllowance, approveToken, ROUTER_ADDRESS, publicClient, quantumEVM, executeSwap } from "@/lib/blockchain";
 import { createWalletClient, custom, parseUnits } from "viem";
@@ -57,7 +179,14 @@ export default function HistoryPage() {
                     api.getGraduatedStrategies()
                 ]);
                 setMarketState(state);
-                setHistoricalProposals((graduated || []).sort((a, b) => b.timestamp - a.timestamp));
+                // Filter out duplicates by ID and sort by timestamp
+                const uniqueProposals = (graduated || []).reduce((acc, proposal) => {
+                    if (!acc.some(p => p.id === proposal.id)) {
+                        acc.push(proposal);
+                    }
+                    return acc;
+                }, [] as MarketStrategy[]);
+                setHistoricalProposals(uniqueProposals.sort((a, b) => b.timestamp - a.timestamp));
                 setAgents(fetchedAgents);
             } catch (error) {
                 console.error("Failed to fetch history data:", error);
@@ -335,7 +464,7 @@ export default function HistoryPage() {
                                                                 <div className="w-10 h-10 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center border border-white/10 bg-white/5 relative overflow-hidden shrink-0">
                                                                     <div className="flex items-center justify-center p-2">
                                                                         {(() => {
-                                                                            const firstDs = sortedDataSources[0];
+                                                                            const firstDs = proposal.usedDataSources?.[0];
                                                                             const detailedInfo = TRUSTED_DATA_SOURCES.find(t => t.id === firstDs?.id);
                                                                             return detailedInfo?.icon ? (
                                                                                 <img src={detailedInfo.icon} className="w-full h-full object-contain" alt="" />
@@ -616,7 +745,7 @@ export default function HistoryPage() {
                                                                     <div>
                                                                         <div className="text-[10px] font-black text-white/20 uppercase tracking-[0.25em] mb-4">Protocol Evaluation Math</div>
                                                                         <code className="text-[13px] font-mono text-emerald-400 font-bold bg-emerald-500/[0.03] px-4 py-3 rounded-xl block border border-emerald-500/10 shadow-inner">
-                                                                            {proposal.mathematicalLogic || '// Logic finalized on-chain'}
+                                                                            {generateMathLogicDisplay(proposal.usedDataSources, proposal.mathematicalLogic)}
                                                                         </code>
                                                                         <div className="mt-6 p-4 rounded-xl bg-emerald-500/[0.03] border border-emerald-500/10 flex gap-4 items-start">
                                                                             <div className="p-2 bg-emerald-500/10 rounded-lg">

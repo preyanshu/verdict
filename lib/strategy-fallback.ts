@@ -16,48 +16,65 @@ export const FALLBACK_DATA_SOURCES = [
 ] as const;
 
 /**
- * Random Math Evaluation Templates
+ * Simple hash function to generate a deterministic number from a string
+ * Used to ensure consistent fallback selection based on strategy ID
  */
-const MATH_EVALUATION_TEMPLATES = [
-    "price > {target}",
-    "price < {target}",
-    "price >= {target}",
-    "price <= {target}",
-    "price * 1.1 > {target}",
-    "price * 0.9 < {target}",
-    "(price + {target}) / 2 > price",
-    "price > {target} * 0.95",
-    "price < {target} * 1.05",
-    "price > {target} AND price < {target} * 1.2",
-] as const;
-
-/**
- * Generate a random math evaluation
- */
-export const generateRandomMathEvaluation = (targetValue: number): string => {
-    const template = MATH_EVALUATION_TEMPLATES[
-        Math.floor(Math.random() * MATH_EVALUATION_TEMPLATES.length)
-    ];
-    return template.replace(/{target}/g, targetValue.toFixed(2));
+const hashString = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
 };
 
 /**
- * Get a random fallback data source
+ * Get a deterministic fallback data source based on strategy ID
+ * This ensures the same strategy always gets the same fallback
  */
-export const getRandomFallbackDataSource = () => {
-    const randomIndex = Math.floor(Math.random() * FALLBACK_DATA_SOURCES.length);
-    const fallback = FALLBACK_DATA_SOURCES[randomIndex];
+export const getDeterministicFallbackDataSource = (strategyId: string, index: number = 0) => {
+    const hash = hashString(strategyId + index.toString());
+    const fallbackIndex = hash % FALLBACK_DATA_SOURCES.length;
+    const fallback = FALLBACK_DATA_SOURCES[fallbackIndex];
     const fullSource = TRUSTED_DATA_SOURCES.find(s => s.id === fallback.id);
     
     if (!fullSource) {
         throw new Error(`Fallback data source ${fallback.id} not found in TRUSTED_DATA_SOURCES`);
     }
     
+    const currentPrice = parseFloat(fullSource.price) || 100;
+    // Use deterministic target: 5% above current price
+    const targetValue = currentPrice * 1.05;
+    
     return {
         id: fullSource.id,
-        currentValue: parseFloat(fullSource.price) || 0,
-        targetValue: parseFloat(fullSource.price) * (0.9 + Math.random() * 0.2), // Random target between 90-110% of current
-        operator: Math.random() > 0.5 ? '>' : '<',
+        currentValue: currentPrice,
+        targetValue: targetValue,
+        operator: '>' as const, // Always use '>' for consistency
+    };
+};
+
+/**
+ * Get a random fallback data source (legacy - use getDeterministicFallbackDataSource instead)
+ * @deprecated Use getDeterministicFallbackDataSource for consistent results
+ */
+export const getRandomFallbackDataSource = () => {
+    // Default to SPY for consistency when no strategy ID is available
+    const fallback = FALLBACK_DATA_SOURCES[0]; // SPY
+    const fullSource = TRUSTED_DATA_SOURCES.find(s => s.id === fallback.id);
+    
+    if (!fullSource) {
+        throw new Error(`Fallback data source ${fallback.id} not found in TRUSTED_DATA_SOURCES`);
+    }
+    
+    const currentPrice = parseFloat(fullSource.price) || 100;
+    
+    return {
+        id: fullSource.id,
+        currentValue: currentPrice,
+        targetValue: currentPrice * 1.05,
+        operator: '>' as const,
     };
 };
 
@@ -69,9 +86,9 @@ export const isValidDataSourceId = (id: number): boolean => {
 };
 
 /**
- * Get valid data source info by ID, or return fallback
+ * Get valid data source info by ID, or return deterministic fallback
  */
-export const getValidDataSource = (id: number) => {
+export const getValidDataSource = (id: number, strategyId: string = 'default', index: number = 0) => {
     const source = TRUSTED_DATA_SOURCES.find(s => s.id === id);
     if (source) {
         return {
@@ -81,28 +98,41 @@ export const getValidDataSource = (id: number) => {
             operator: '>' as const,
         };
     }
-    // Return fallback if invalid
-    return getRandomFallbackDataSource();
+    // Return deterministic fallback if invalid
+    return getDeterministicFallbackDataSource(strategyId, index);
+};
+
+/**
+ * Generate mathematical logic using real asset tickers from data sources
+ */
+export const generateMathLogicWithRealTickers = (dataSources: Array<{ id: number; targetValue: number; operator: string }>): string => {
+    return dataSources.map(ds => {
+        const source = TRUSTED_DATA_SOURCES.find(s => s.id === ds.id);
+        const ticker = source?.ticker || 'ASSET';
+        return `${ticker} ${ds.operator} ${typeof ds.targetValue === 'number' ? ds.targetValue.toFixed(2) : ds.targetValue}`;
+    }).join(' AND ');
 };
 
 /**
  * Validate and fix strategy data sources
- * Replaces invalid IDs with valid fallback sources
+ * Replaces invalid IDs with valid fallback sources (deterministically based on strategy ID)
+ * Uses real asset tickers in mathematical logic
  */
 export const validateAndFixStrategy = (strategy: MarketStrategy): MarketStrategy => {
     if (!strategy.usedDataSources || strategy.usedDataSources.length === 0) {
-        // If no data sources, add a random fallback
+        // If no data sources, add a deterministic fallback based on strategy ID
+        const fallbackSource = getDeterministicFallbackDataSource(strategy.id);
+        const source = TRUSTED_DATA_SOURCES.find(s => s.id === fallbackSource.id);
+        const ticker = source?.ticker || 'ASSET';
         return {
             ...strategy,
-            usedDataSources: [getRandomFallbackDataSource()],
-            mathematicalLogic: strategy.mathematicalLogic || generateRandomMathEvaluation(
-                getRandomFallbackDataSource().targetValue
-            ),
+            usedDataSources: [fallbackSource],
+            mathematicalLogic: strategy.mathematicalLogic || `${ticker} ${fallbackSource.operator} ${fallbackSource.targetValue.toFixed(2)}`,
         };
     }
 
-    // Validate and fix each data source
-    const fixedDataSources = strategy.usedDataSources.map(ds => {
+    // Validate and fix each data source (use index for deterministic fallback selection)
+    const fixedDataSources = strategy.usedDataSources.map((ds, index) => {
         if (isValidDataSourceId(ds.id)) {
             // Valid ID, but ensure we have proper values
             const source = TRUSTED_DATA_SOURCES.find(s => s.id === ds.id);
@@ -113,17 +143,14 @@ export const validateAndFixStrategy = (strategy: MarketStrategy): MarketStrategy
                 operator: ds.operator || '>',
             };
         } else {
-            // Invalid ID, replace with fallback
+            // Invalid ID, replace with deterministic fallback based on strategy ID and index
             console.warn(`Invalid data source ID ${ds.id} in strategy ${strategy.id}, using fallback`);
-            return getRandomFallbackDataSource();
+            return getDeterministicFallbackDataSource(strategy.id, index);
         }
     });
 
-    // Ensure mathematical logic exists
-    const fixedMathematicalLogic = strategy.mathematicalLogic || 
-        fixedDataSources.map(ds => 
-            `price ${ds.operator} ${ds.targetValue.toFixed(2)}`
-        ).join(' AND ');
+    // Generate mathematical logic with real asset tickers
+    const fixedMathematicalLogic = generateMathLogicWithRealTickers(fixedDataSources);
 
     return {
         ...strategy,
