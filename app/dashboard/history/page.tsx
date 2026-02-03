@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
  * Generate human-readable mathematical logic using real asset tickers from data sources
  */
 const generateMathLogicDisplay = (
-    dataSources: Array<{ id: number; targetValue: number; operator: string }> | undefined,
+    dataSources: Array<{ id: number; targetValue: number; operator?: string }> | undefined,
     fallbackLogic?: string
 ): string => {
     if (!dataSources || dataSources.length === 0) {
@@ -40,10 +40,11 @@ const generateMathLogicDisplay = (
     return dataSources.map(ds => {
         const source = TRUSTED_DATA_SOURCES.find(s => s.id === ds.id);
         const ticker = source?.ticker || 'ASSET';
+        const operator = ds.operator || '>=';
         const targetDisplay = typeof ds.targetValue === 'number' 
             ? (ds.targetValue % 1 === 0 ? ds.targetValue.toString() : ds.targetValue.toFixed(2))
             : ds.targetValue;
-        return `${ticker} ${ds.operator} ${targetDisplay}`;
+        return `${ticker} ${operator} ${targetDisplay}`;
     }).join(' AND ');
 };
 
